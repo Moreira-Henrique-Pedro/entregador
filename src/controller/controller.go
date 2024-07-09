@@ -25,8 +25,8 @@ func (c *BoxController) InitRoutes() {
 
 	api.GET("/:id", c.findBoxByID)
 	api.POST("/", c.createBox)
-	api.PUT("/", c.updateBox)
-	api.DELETE("/", c.deleteBoxByID)
+	api.PUT("/:id", c.updateBox)
+	api.DELETE("/:id", c.deleteBoxByID)
 
 	app.Run(":3000")
 }
