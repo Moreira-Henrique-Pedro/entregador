@@ -13,15 +13,23 @@ import (
 func CreateConnection() *gorm.DB {
 	fmt.Println("About to connect to DB")
 
+	host := os.Getenv("DB_HOST")
+	user := os.Getenv("DB_USER")
+	password := os.Getenv("DB_PASS")
+	dbname := os.Getenv("DB_DBNAME")
+	port := os.Getenv("DB_PORT")
+	sslmode := os.Getenv("DB_SSLMODE")
+	timezone := os.Getenv("DB_TIMEZONE")
+
 	dsn := fmt.Sprintf(
 		"host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=%s",
-		os.Getenv("DB_HOST"),
-		os.Getenv("DB_USER"),
-		os.Getenv("DB_PSW"),
-		os.Getenv("DB_DBNAME"),
-		os.Getenv("DB_PORT"),
-		os.Getenv("DB_SSLMODE"),
-		os.Getenv("DB_TIMEZONE"))
+		host,
+		user,
+		password,
+		dbname,
+		port,
+		sslmode,
+		timezone)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
@@ -29,9 +37,12 @@ func CreateConnection() *gorm.DB {
 	}
 
 	// Orientando o GORM a criar a tabela que corresponda a struct model.Package
-	err = db.AutoMigrate(&model.Package{})
+	err = db.AutoMigrate(&model.Box{})
 	if err != nil {
 		log.Fatal("failed to migrate DB ", err)
 	}
+
+	fmt.Println("Successfully connected!")
+
 	return db
 }
