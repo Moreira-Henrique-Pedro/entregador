@@ -18,9 +18,9 @@ func init() {
 
 func main() {
 	db := infra.CreateConnection()
-	stockService := service.NewBoxService(db)
-	stockController := controller.NewBoxController(stockService)
+	boxService := service.NewBoxService(db)
+	boxController := controller.NewBoxController(boxService)
 
-	stockController.InitRoutes()
+	boxController.InitRoutes()
 
 }

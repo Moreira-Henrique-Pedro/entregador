@@ -1,6 +1,8 @@
 package service
 
 import (
+	"log/slog"
+
 	"github.com/Moreira-Henrique-Pedro/entregador/src/model"
 	"gorm.io/gorm"
 )
@@ -16,28 +18,41 @@ func NewBoxService(db *gorm.DB) *BoxService {
 }
 
 func (b *BoxService) CreateBox(box model.Box) (uint64, error) {
+	slog.Info("Creating box")
+
 	result := b.db.Create(&box)
 	if result.Error != nil {
+		slog.Error("Error to creat box")
 		return 0, result.Error
 	}
+
+	slog.Info("Box created sucessfuly id")
 
 	return uint64(box.ID), nil
 }
 
 func (b *BoxService) FindBoxByID(id uint64) (model.Box, error) {
+	slog.Info("finding box ID: %v", id)
+
 	box := new(model.Box)
 	resp := b.db.First(&box, id)
 	if resp.Error != nil {
+		slog.Error("Error to creat box")
 		return model.Box{}, resp.Error
 	}
+
+	slog.Info("Box id founded sucessfuly")
 
 	return *box, nil
 }
 
 func (b *BoxService) UpdateBox(box model.Box, id uint64) (model.Box, error) {
+	slog.Info("Updating box ID")
+
 	exist := new(model.Box)
 	result := b.db.First(&exist, id)
 	if result.Error != nil {
+		slog.Error("Error to creat box")
 		return model.Box{}, result.Error
 	}
 
@@ -45,15 +60,21 @@ func (b *BoxService) UpdateBox(box model.Box, id uint64) (model.Box, error) {
 
 	resp := b.db.Save(&exist)
 	if resp.Error != nil {
+		slog.Error("Error to creat box")
 		return model.Box{}, resp.Error
 	}
+
+	slog.Info("Box id founded sucessfuly")
 
 	return *exist, nil
 }
 
 func (b *BoxService) DeleteBoxByID(id uint64) error {
+	slog.Info("Deleting box ID")
+
 	result := b.db.Delete(&model.Box{}, id)
 	if result.Error != nil {
+		slog.Error("Error to delete box")
 		return result.Error
 	}
 
