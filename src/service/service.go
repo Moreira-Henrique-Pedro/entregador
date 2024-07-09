@@ -32,7 +32,7 @@ func (b *BoxService) CreateBox(box model.Box) (uint64, error) {
 }
 
 func (b *BoxService) FindBoxByID(id uint64) (model.Box, error) {
-	slog.Info("finding box ID: %v", id)
+	slog.Info("finding box")
 
 	box := new(model.Box)
 	resp := b.db.First(&box, id)
