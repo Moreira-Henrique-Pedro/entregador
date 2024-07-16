@@ -8,10 +8,11 @@ import (
 )
 
 type BoxService struct {
-	db *gorm.DB
+	db            *gorm.DB
+	twilioService *TwilioService
 }
 
-func NewBoxService(db *gorm.DB) *BoxService {
+func NewBoxService(db *gorm.DB, twilioService *TwilioService) *BoxService {
 	return &BoxService{
 		db: db,
 	}
@@ -24,6 +25,14 @@ func (b *BoxService) CreateBox(box model.Box) (uint64, error) {
 	if result.Error != nil {
 		slog.Error("Error to creat box")
 		return 0, result.Error
+	}
+
+	to := "11968358817"
+
+	err := b.twilioService.SendWhatsAppMessage(to)
+	if err != nil {
+		slog.Error("Error sending WhatsApp message")
+		return 0, err
 	}
 
 	slog.Info("Box created sucessfuly id")

@@ -17,8 +17,11 @@ func init() {
 }
 
 func main() {
+
 	db := infra.CreateConnection()
-	boxService := service.NewBoxService(db)
+	twilioService := service.NewTwilioService()
+
+	boxService := service.NewBoxService(db, twilioService)
 	boxController := controller.NewBoxController(boxService)
 
 	boxController.InitRoutes()
