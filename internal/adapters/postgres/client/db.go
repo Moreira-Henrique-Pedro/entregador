@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/Moreira-Henrique-Pedro/entregador/src/model"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/entrypoints/v1/presenters"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -37,7 +37,7 @@ func CreateConnection() *gorm.DB {
 	}
 
 	// Orientando o GORM a criar a tabela que corresponda a struct model.Package
-	err = db.AutoMigrate(&model.Box{})
+	err = db.AutoMigrate(&presenters.DeliveryDTO{})
 	if err != nil {
 		log.Fatal("failed to migrate DB ", err)
 	}
