@@ -28,3 +28,10 @@ DELETE /api/entregador/:id - Delete a box by ID
 # Deployment
 
 There is a GitHub Actions workflow that deploys the application when you push to the develop or main branches. 
+
+### About Mockery
+Mockery is a tool that automatically generates mocks from Go interfaces. This allows you to create consistent and up-to-date mocks without manually implementing each method. In case you need to create new mocks, you can use the following command:
+
+```bash
+mockery --name=TwilioPort --dir=internal/domain/ports --output=internal/domain/ports/mocks --outpkg=mocks --filename=twilio.port.mock.go
+```
