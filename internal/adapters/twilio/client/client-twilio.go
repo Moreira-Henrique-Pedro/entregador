@@ -33,7 +33,7 @@ func (t *TwilioClient) SendWhatsAppMessage(ctx context.Context, to string) error
 
 	_, err := t.client.Api.CreateMessage(params)
 	if err != nil {
-		slog.Error("Error sending WhatsApp message: %v", err)
+		slog.Error("Error sending WhatsApp message", "error", err)
 		return err
 	}
 
