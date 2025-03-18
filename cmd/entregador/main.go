@@ -3,9 +3,8 @@ package main
 import (
 	"log"
 
-	"github.com/Moreira-Henrique-Pedro/entregador/src/controller"
-	"github.com/Moreira-Henrique-Pedro/entregador/src/infra"
-	"github.com/Moreira-Henrique-Pedro/entregador/src/service"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/twilio"
+	twilioClient "github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/twilio/client"
 	"github.com/joho/godotenv"
 )
 
@@ -18,12 +17,7 @@ func init() {
 
 func main() {
 
-	db := infra.CreateConnection()
-	twilioService := service.NewTwilioService()
-
-	boxService := service.NewBoxService(db, twilioService)
-	boxController := controller.NewBoxController(boxService)
-
-	boxController.InitRoutes()
+	twilioClient := twilioClient.NewTwilioClient()
+	twilio.NewTwilioPort(twilioClient)
 
 }
