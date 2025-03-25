@@ -9,6 +9,10 @@ import (
 	openapi "github.com/twilio/twilio-go/rest/api/v2010"
 )
 
+type TwilioClientPort interface {
+	SendWhatsAppMessage(ctx context.Context, to string) error
+}
+
 type TwilioClient struct {
 	client twilio.RestClient
 }

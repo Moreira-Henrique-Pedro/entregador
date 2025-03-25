@@ -18,6 +18,6 @@ func init() {
 func main() {
 
 	twilioClient := twilioClient.NewTwilioClient()
-	twilio.NewTwilioPort(twilioClient)
+	twilio.NewTwilioPort(&twilioClient)
 
 }
