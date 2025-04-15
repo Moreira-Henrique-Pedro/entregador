@@ -31,5 +31,5 @@ func main() {
 	}
 
 	deliveryRepo := postgres.NewDeliveryRepository(postgresClient)
-	logger.Info("Delivery repository created: %v", deliveryRepo)
+	logger.Info("Delivery repository created", deliveryRepo)
 }
