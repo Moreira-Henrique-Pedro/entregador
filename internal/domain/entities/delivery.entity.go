@@ -3,6 +3,7 @@ package entities
 import "time"
 
 type Delivery struct {
+	ID          string
 	ApNum       string
 	PackageType string
 	Urgency     string

@@ -5,7 +5,7 @@ import (
 
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/twilio/client"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/ports"
-	"github.com/dock-colombia/commons-shared/logging"
+	"github.com/sirupsen/logrus"
 )
 
 type TwilioService struct {
@@ -19,10 +19,12 @@ func NewTwilioPort(client client.TwilioClientPort) ports.TwilioPort {
 }
 
 func (t *TwilioService) SendWhatsAppMessage(ctx context.Context, to string) error {
-	log := logging.FromContext(&ctx)
+	logger := logrus.New()
+	logger.Info("Sending WhatsApp message to: ", to)
+	// Call the Twilio client to send the message
 	err := t.client.SendWhatsAppMessage(ctx, to)
 	if err != nil {
-		log.LogError("Error sending WhatsApp message", logging.Fields{"error": err})
+		logger.Error("Failed to send WhatsApp message: ", err)
 		return err
 	}
 
