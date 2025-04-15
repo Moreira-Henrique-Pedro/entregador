@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/ports"
@@ -23,8 +24,16 @@ func NewDeliveryRepository(postgresClient *Client) ports.DeliveryRepositoryPort 
 }
 
 func (repository *DeliveryRepository) CreateDelivery(ctx context.Context, delivery *entities.Delivery) (*entities.Delivery, error) {
+	logger := logrus.New()
+	if delivery.CreatedAt.IsZero() {
+		delivery.CreatedAt = time.Now()
+	}
+	if delivery.UpdatedAt.IsZero() {
+		delivery.UpdatedAt = time.Now()
+	}
 	err := repository.postgresClient.DB.WithContext(ctx).Create(delivery).Error
 	if err != nil {
+		logger.Error("Error to create delivery", err)
 		return nil, err
 	}
 	return delivery, nil

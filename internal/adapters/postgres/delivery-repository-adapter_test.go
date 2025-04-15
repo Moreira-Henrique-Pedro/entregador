@@ -53,14 +53,10 @@ func TestDeliveryRepositoryTestSuite(t *testing.T) {
 }
 
 func (suite *DeliveryRepositoryTestSuite) TestCreateDeliverySuccess() {
-	suite.mock.ExpectBegin()
-	suite.mock.ExpectExec("INSERT INTO \"deliveries\"").
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
-		WillReturnResult(sqlmock.NewResult(1, 1))
-	suite.mock.ExpectCommit()
-
+	// Arrange
 	now := time.Now()
 	delivery := &entities.Delivery{
+		ID:          "teste-id",
 		ApNum:       "63",
 		PackageType: "box",
 		Urgency:     "high",
@@ -69,15 +65,32 @@ func (suite *DeliveryRepositoryTestSuite) TestCreateDeliverySuccess() {
 		UpdatedAt:   now,
 	}
 
+	suite.mock.ExpectBegin()
+	suite.mock.ExpectExec("INSERT INTO \"deliveries\"").
+		WithArgs(
+			delivery.ID,
+			delivery.ApNum,
+			delivery.PackageType,
+			delivery.Urgency,
+			delivery.Status,
+			sqlmock.AnyArg(), // CreatedAt
+			sqlmock.AnyArg(), // UpdatedAt
+			sqlmock.AnyArg(), // DeletedAt (soft delete)
+		).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	suite.mock.ExpectCommit()
+
+	// Act
 	result, err := suite.repo.CreateDelivery(suite.ctx, delivery)
 
+	// Assert
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
-
-	assert.Equal(suite.T(), "63", result.ApNum)
-	assert.Equal(suite.T(), "box", result.PackageType)
-	assert.Equal(suite.T(), "high", result.Urgency)
-	assert.Equal(suite.T(), "pending", result.Status)
+	assert.Equal(suite.T(), delivery.ID, result.ID)
+	assert.Equal(suite.T(), delivery.ApNum, result.ApNum)
+	assert.Equal(suite.T(), delivery.PackageType, result.PackageType)
+	assert.Equal(suite.T(), delivery.Urgency, result.Urgency)
+	assert.Equal(suite.T(), delivery.Status, result.Status)
 	assert.WithinDuration(suite.T(), now, result.CreatedAt, time.Second)
 	assert.WithinDuration(suite.T(), now, result.UpdatedAt, time.Second)
 
