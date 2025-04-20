@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	postgresClient "github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/postgres/client"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/ports"
 	"github.com/sirupsen/logrus"
@@ -13,11 +14,11 @@ import (
 )
 
 type DeliveryRepository struct {
-	postgresClient *Client
+	postgresClient *postgresClient.Client
 }
 
 // NewDeliveryRepository creates a new instance of DeliveryRepository
-func NewDeliveryRepository(postgresClient *Client) ports.DeliveryRepositoryPort {
+func NewDeliveryRepository(postgresClient *postgresClient.Client) ports.DeliveryRepositoryPort {
 	return &DeliveryRepository{
 		postgresClient: postgresClient,
 	}

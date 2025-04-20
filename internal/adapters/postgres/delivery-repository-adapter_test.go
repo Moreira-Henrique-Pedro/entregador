@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	postgresGorm "github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/postgres"
+	postgresClientGorm "github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/postgres/client"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/ports"
 )
@@ -40,7 +41,7 @@ func (suite *DeliveryRepositoryTestSuite) SetupTest() {
 	assert.NoError(suite.T(), err)
 
 	// Configura o repositório de entregas com a conexão GORM
-	client := &postgresGorm.Client{DB: suite.db}
+	client := &postgresClientGorm.Client{DB: suite.db}
 	suite.repo = postgresGorm.NewDeliveryRepository(client)
 
 	// Contexto que será usado nos testes

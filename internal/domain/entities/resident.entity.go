@@ -2,7 +2,7 @@ package entities
 
 type Resident struct {
 	Apartamento string         `bson:"apartamento"`
-	Moradores   []ResidentInfo `bson:"moradores"`
+	Resident    []ResidentInfo `bson:"moradores"`
 }
 
 type ResidentInfo struct {
