@@ -72,7 +72,6 @@ func (repository *DeliveryRepository) GetDeliveryByID(ctx context.Context, id st
 	return &delivery, nil
 }
 
-// UpdateDelivery updates an existing delivery record in the database
 func (repository *DeliveryRepository) UpdateDelivery(ctx context.Context, delivery *entities.Delivery) error {
 	logger := logrus.New()
 
@@ -81,5 +80,12 @@ func (repository *DeliveryRepository) UpdateDelivery(ctx context.Context, delive
 		logger.Error("failed to update delivery: ", result.Error)
 		return result.Error
 	}
+
+	// Verificar se algum registro foi atualizado
+	if result.RowsAffected == 0 {
+		logger.WithField("delivery_id", delivery.ID).Info("no delivery found to update")
+		return errors.New("delivery not found")
+	}
+
 	return nil
 }

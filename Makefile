@@ -8,3 +8,7 @@ up:
 app-up:
 	docker compose -f ./docker-compose.yml up --build -d
 	./scripts/run/run.application.sh
+
+## rodar todos os testes unitários
+test:
+	go test -v -coverprofile=coverage.out ./internal/...
