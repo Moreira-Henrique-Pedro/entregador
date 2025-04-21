@@ -55,8 +55,10 @@ func TestCreateDeliveryUseCaseExecuteSuccess(t *testing.T) {
 	mockResidentRepo.On("GetByApartment", ctx, "101").Return(resident, nil)
 	mockTwilio.On("SendWhatsAppMessage", ctx, "+5511999998888", expectedMessage).Return(nil)
 
-	err := useCase.Execute(ctx, inputDelivery)
+	result, err := useCase.Execute(ctx, inputDelivery)
 
+	assert.Equal(t, result.ApNum, createdDelivery.ApNum)
+	assert.Equal(t, result.PackageType, createdDelivery.PackageType)
 	assert.NoError(t, err, "Não deveria retornar erro em caso de sucesso")
 	mockDeliveryRepo.AssertExpectations(t)
 	mockResidentRepo.AssertExpectations(t)
@@ -87,9 +89,10 @@ func TestCreateDeliveryUseCaseCreateDeliveryError(t *testing.T) {
 	mockDeliveryRepo.On("CreateDelivery", ctx, mock.Anything).Return(nil, mockErr)
 
 	// Act
-	err := useCase.Execute(ctx, inputDelivery)
+	result, err := useCase.Execute(ctx, inputDelivery)
 
 	// Assert
+	assert.Nil(t, result)
 	assert.Error(t, err, "Deveria retornar erro quando falha ao criar entrega")
 	assert.ErrorContains(t, err, "falha ao registrar entrega")
 	mockDeliveryRepo.AssertExpectations(t)
@@ -126,10 +129,11 @@ func TestCreateDeliveryUseCaseResidentNotFound(t *testing.T) {
 	mockResidentRepo.On("GetByApartment", ctx, "101").Return(nil, nil)
 
 	// Act
-	err := useCase.Execute(ctx, inputDelivery)
+	result, err := useCase.Execute(ctx, inputDelivery)
 
 	// Assert
 	assert.Nil(t, err)
+	assert.NotNil(t, result)
 	mockDeliveryRepo.AssertExpectations(t)
 	mockResidentRepo.AssertExpectations(t)
 	mockTwilio.AssertNotCalled(t, "SendWhatsAppMessage")
@@ -168,9 +172,10 @@ func TestCreateDeliveryUseCaseEmptyResidentList(t *testing.T) {
 	mockResidentRepo.On("GetByApartment", ctx, "101").Return(emptyResident, nil)
 
 	// Act
-	err := useCase.Execute(ctx, inputDelivery)
+	result, err := useCase.Execute(ctx, inputDelivery)
 
 	assert.Nil(t, err)
+	assert.NotNil(t, result)
 	mockDeliveryRepo.AssertExpectations(t)
 	mockResidentRepo.AssertExpectations(t)
 	mockTwilio.AssertNotCalled(t, "SendWhatsAppMessage")
@@ -219,9 +224,10 @@ func TestCreateDeliveryUseCaseSendMessageError(t *testing.T) {
 	mockTwilio.On("SendWhatsAppMessage", ctx, "+5511999998888", expectedMessage).Return(mockErr)
 
 	// Act
-	err := useCase.Execute(ctx, inputDelivery)
+	result, err := useCase.Execute(ctx, inputDelivery)
 
 	assert.Nil(t, err)
+	assert.NotNil(t, result)
 	mockDeliveryRepo.AssertExpectations(t)
 	mockResidentRepo.AssertExpectations(t)
 	mockTwilio.AssertExpectations(t)
