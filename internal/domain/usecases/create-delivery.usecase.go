@@ -1,3 +1,4 @@
+// package usecases implementa o caso de uso de criação de entrega
 package usecases
 
 import (
@@ -9,16 +10,19 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// CreateDeliveryUseCasePort é a interface que define os métodos para o caso de uso de criação de entrega
 type CreateDeliveryUseCasePort interface {
 	Execute(ctx context.Context, delivery entities.Delivery) (*entities.Delivery, error)
 }
 
+// CreateDeliveryUseCase é a estrutura que implementa o caso de uso de criação de entrega
 type CreateDeliveryUseCase struct {
 	deliveryRepo ports.DeliveryRepositoryPort
 	residentRepo ports.ResidentRepositoryPort
 	messaging    ports.TwilioPort
 }
 
+// NewCreateDeliveryUseCase cria uma nova instância do caso de uso de criação de entrega
 func NewCreateDeliveryUseCase(
 	deliveryRepo ports.DeliveryRepositoryPort,
 	residentRepo ports.ResidentRepositoryPort,
@@ -31,6 +35,7 @@ func NewCreateDeliveryUseCase(
 	}
 }
 
+// Execute executa o caso de uso de criação de entrega
 func (usecase *CreateDeliveryUseCase) Execute(ctx context.Context, delivery entities.Delivery) (*entities.Delivery, error) {
 	log := logrus.WithFields(logrus.Fields{
 		"apNum":       delivery.ApNum,

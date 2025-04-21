@@ -1,3 +1,4 @@
+// package mongodb contém a implementação do cliente MongoDB e suas operações
 package mongodb
 
 import (
@@ -8,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// Interface para abstrair a collection
+// Interface MongoCollectionPort para abstrair a collection
 type MongoCollectionPort interface {
 	InsertOne(ctx context.Context, document interface{},
 		opts ...*options.InsertOneOptions) (*mongo.InsertOneResult, error)
@@ -25,26 +26,30 @@ type SingleResultPort interface {
 	Decode(val interface{}) error
 }
 
-// Implementação do wrapper para Collection
+// MongoCollectionAdapter implementa o wrapper para Collection
 type MongoCollectionAdapter struct {
 	collection *mongo.Collection
 }
 
+// InsertOne insere um único registro na coleção
 func (mca *MongoCollectionAdapter) InsertOne(ctx context.Context, document interface{},
 	opts ...*options.InsertOneOptions) (*mongo.InsertOneResult, error) {
 	return mca.collection.InsertOne(ctx, document, opts...)
 }
 
+// FindOne busca um único registro na coleção
 func (mca *MongoCollectionAdapter) FindOne(ctx context.Context, filter interface{},
 	opts ...*options.FindOneOptions) SingleResultPort {
 	return mca.collection.FindOne(ctx, filter, opts...)
 }
 
+// UpdateOne atualiza um único registro na coleção
 func (mca *MongoCollectionAdapter) UpdateOne(ctx context.Context, filter interface{}, update interface{},
 	opts ...*options.UpdateOptions) (*mongo.UpdateResult, error) {
 	return mca.collection.UpdateOne(ctx, filter, update, opts...)
 }
 
+// DeleteOne remove um único registro da coleção
 func (mca *MongoCollectionAdapter) DeleteOne(ctx context.Context, filter interface{},
 	opts ...*options.DeleteOptions) (*mongo.DeleteResult, error) {
 	return mca.collection.DeleteOne(ctx, filter, opts...)
@@ -68,6 +73,7 @@ func NewMongoClient(uri string) (*mongo.Client, error) {
 	return client, nil
 }
 
+// Função que retorna a coleção do Mongo
 func GetMongoCollection(client *mongo.Client, dbName, collectionName string) MongoCollectionPort {
 	collection := client.Database(dbName).Collection(collectionName)
 	return &MongoCollectionAdapter{collection: collection}

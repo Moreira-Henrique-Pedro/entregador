@@ -1,0 +1,23 @@
+# .golangci.yml
+version: 2
+
+linters:
+  enable:
+    - unused          # Verifica funções e variáveis não utilizadas
+    - errcheck        # Verifica se os erros são tratados
+    - staticcheck     # Verifica várias questões de qualidade do código
+    - gocyclo         # Verifica a complexidade ciclomática
+    - gosec           # Verifica questões de segurança
+    - ineffassign      # Verifica atribuições de variáveis não utilizadas
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      text: "error return value not checked"
+    - path: _test\.go
+      text: "should have comment or be unexported"
+
+# Configurações adicionais
+run:
+  tests: true  # Executa o linter em arquivos de teste
+  timeout: 5m  # Tempo limite para execução do linter

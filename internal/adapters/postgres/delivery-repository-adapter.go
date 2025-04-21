@@ -1,3 +1,4 @@
+// package postgres contem implementações específicas para o banco de dados Postgres, incluindo repositórios e clientes.
 package postgres
 
 import (
@@ -13,17 +14,19 @@ import (
 	"gorm.io/gorm"
 )
 
+// DeliveryRepository é a estrutura que representa o repositório de entregas
 type DeliveryRepository struct {
 	postgresClient *postgresClient.Client
 }
 
-// NewDeliveryRepository creates a new instance of DeliveryRepository
+// NewDeliveryRepository cria uma nova instância de DeliveryRepository
 func NewDeliveryRepository(postgresClient *postgresClient.Client) ports.DeliveryRepositoryPort {
 	return &DeliveryRepository{
 		postgresClient: postgresClient,
 	}
 }
 
+// CreateDelivery insere um novo registro de entrega no banco de dados
 func (repository *DeliveryRepository) CreateDelivery(ctx context.Context, delivery *entities.Delivery) (*entities.Delivery, error) {
 	logger := logrus.New()
 	if delivery.CreatedAt.IsZero() {
@@ -40,7 +43,7 @@ func (repository *DeliveryRepository) CreateDelivery(ctx context.Context, delive
 	return delivery, nil
 }
 
-// DeleteDeliveryByID deletes a delivery record by its ID
+// DeleteDeliveryByID deleta um registro de entrega pelo ID
 func (repository *DeliveryRepository) DeleteDeliveryByID(ctx context.Context, id string) error {
 	logger := logrus.New()
 	result := repository.postgresClient.DB.WithContext(ctx).Delete(&entities.Delivery{}, "id = ?", id)
@@ -57,7 +60,7 @@ func (repository *DeliveryRepository) DeleteDeliveryByID(ctx context.Context, id
 	return nil
 }
 
-// GetDeliveryByID retrieves a delivery record by its ID
+// GetDeliveryByID busca um registro de entrega pelo ID
 func (repository *DeliveryRepository) GetDeliveryByID(ctx context.Context, id string) (*entities.Delivery, error) {
 	logger := logrus.New()
 	var delivery entities.Delivery
@@ -73,6 +76,7 @@ func (repository *DeliveryRepository) GetDeliveryByID(ctx context.Context, id st
 	return &delivery, nil
 }
 
+// UpdateDelivery atualiza um registro de entrega
 func (repository *DeliveryRepository) UpdateDelivery(ctx context.Context, delivery *entities.Delivery) error {
 	logger := logrus.New()
 
