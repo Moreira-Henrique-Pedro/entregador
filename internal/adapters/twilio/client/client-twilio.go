@@ -10,7 +10,7 @@ import (
 )
 
 type TwilioClientPort interface {
-	SendWhatsAppMessage(ctx context.Context, to string) error
+	SendWhatsAppMessage(ctx context.Context, to string, message string) error
 }
 
 type TwilioClient struct {
@@ -26,14 +26,12 @@ func NewTwilioClient() TwilioClient {
 	return TwilioClient{client: *client}
 }
 
-func (t *TwilioClient) SendWhatsAppMessage(ctx context.Context, to string) error {
-
-	body := "Sua Entrega chegou"
+func (t *TwilioClient) SendWhatsAppMessage(ctx context.Context, to string, message string) error {
 
 	params := &openapi.CreateMessageParams{}
 	params.SetTo("whatsapp:" + to)
 	params.SetFrom("whatsapp:" + os.Getenv("TWILIO_FROM"))
-	params.SetBody(body)
+	params.SetBody(message)
 
 	_, err := t.client.Api.CreateMessage(params)
 	if err != nil {

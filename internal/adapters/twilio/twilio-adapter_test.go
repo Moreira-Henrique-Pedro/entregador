@@ -11,15 +11,19 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+const (
+	message = "sua entrega chegou"
+)
+
 func TestTwilioServiceSendWhatsAppMessageSuccess(t *testing.T) {
 	// Arrange
 	mockClient := new(mocks.TwilioClientPort)
-	mockClient.On("SendWhatsAppMessage", mock.Anything, "+5511999999999").Return(nil)
+	mockClient.On("SendWhatsAppMessage", mock.Anything, "+5511999999999", message).Return(nil)
 
 	service := twilio.NewTwilioPort(mockClient)
 
 	// Act
-	err := service.SendWhatsAppMessage(context.Background(), "+5511999999999")
+	err := service.SendWhatsAppMessage(context.Background(), "+5511999999999", message)
 
 	// Assert
 	assert.NoError(t, err)
@@ -29,12 +33,12 @@ func TestTwilioServiceSendWhatsAppMessageSuccess(t *testing.T) {
 func TestTwilioServiceSendWhatsAppMessageError(t *testing.T) {
 	// Arrange
 	mockClient := new(mocks.TwilioClientPort)
-	mockClient.On("SendWhatsAppMessage", mock.Anything, "+5511999999999").Return(errors.ErrFailedToSendWhatsApp)
+	mockClient.On("SendWhatsAppMessage", mock.Anything, "+5511999999999", message).Return(errors.ErrFailedToSendWhatsApp)
 
 	service := twilio.NewTwilioPort(mockClient)
 
 	// Act
-	err := service.SendWhatsAppMessage(context.Background(), "+5511999999999")
+	err := service.SendWhatsAppMessage(context.Background(), "+5511999999999", message)
 
 	// Assert
 	assert.Error(t, err)

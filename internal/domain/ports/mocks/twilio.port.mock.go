@@ -13,13 +13,13 @@ type TwilioPort struct {
 	mock.Mock
 }
 
-// SendWhatsAppMessage provides a mock function with given fields: ctx, to
-func (_m *TwilioPort) SendWhatsAppMessage(ctx context.Context, to string) error {
-	ret := _m.Called(ctx, to)
+// SendWhatsAppMessage provides a mock function with given fields: ctx, to, message
+func (_m *TwilioPort) SendWhatsAppMessage(ctx context.Context, to string, message string) error {
+	ret := _m.Called(ctx, to, message)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = rf(ctx, to)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = rf(ctx, to, message)
 	} else {
 		r0 = ret.Error(0)
 	}

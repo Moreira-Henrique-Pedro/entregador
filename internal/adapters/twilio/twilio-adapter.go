@@ -18,11 +18,11 @@ func NewTwilioPort(client client.TwilioClientPort) ports.TwilioPort {
 	}
 }
 
-func (t *TwilioService) SendWhatsAppMessage(ctx context.Context, to string) error {
+func (t *TwilioService) SendWhatsAppMessage(ctx context.Context, to string, message string) error {
 	logger := logrus.New()
 	logger.Info("Sending WhatsApp message to: ", to)
 	// Call the Twilio client to send the message
-	err := t.client.SendWhatsAppMessage(ctx, to)
+	err := t.client.SendWhatsAppMessage(ctx, to, message)
 	if err != nil {
 		logger.Error("Failed to send WhatsApp message: ", err)
 		return err
