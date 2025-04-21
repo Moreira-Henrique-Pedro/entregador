@@ -10,7 +10,7 @@ import (
 )
 
 type CreateDeliveryUseCasePort interface {
-	Execute(ctx context.Context, delivery entities.Delivery) error
+	Execute(ctx context.Context, delivery entities.Delivery) (*entities.Delivery, error)
 }
 
 type CreateDeliveryUseCase struct {
@@ -31,7 +31,7 @@ func NewCreateDeliveryUseCase(
 	}
 }
 
-func (usecase *CreateDeliveryUseCase) Execute(ctx context.Context, delivery entities.Delivery) error {
+func (usecase *CreateDeliveryUseCase) Execute(ctx context.Context, delivery entities.Delivery) (*entities.Delivery, error) {
 	log := logrus.WithFields(logrus.Fields{
 		"apNum":       delivery.ApNum,
 		"packageType": delivery.PackageType,
@@ -40,7 +40,7 @@ func (usecase *CreateDeliveryUseCase) Execute(ctx context.Context, delivery enti
 
 	createdDelivery, err := usecase.handleCreateDelivery(ctx, delivery)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	resident, err := usecase.handleResident(ctx, *createdDelivery)
@@ -55,7 +55,7 @@ func (usecase *CreateDeliveryUseCase) Execute(ctx context.Context, delivery enti
 	}
 
 	log.Info("Entrega registrada com sucesso")
-	return nil
+	return createdDelivery, nil
 }
 
 func (usecase *CreateDeliveryUseCase) handleCreateDelivery(ctx context.Context, delivery entities.Delivery) (*entities.Delivery, error) {
