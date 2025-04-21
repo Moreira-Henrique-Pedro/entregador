@@ -21,11 +21,10 @@ import (
 
 type DeliveryRepositoryTestSuite struct {
 	suite.Suite
-	db      *gorm.DB
-	mock    sqlmock.Sqlmock
-	repo    ports.DeliveryRepositoryPort
-	ctx     context.Context
-	cleanup func()
+	db   *gorm.DB
+	mock sqlmock.Sqlmock
+	repo ports.DeliveryRepositoryPort
+	ctx  context.Context
 }
 
 func (suite *DeliveryRepositoryTestSuite) SetupTest() {

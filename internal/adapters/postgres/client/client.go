@@ -11,10 +11,12 @@ import (
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/entrypoints/v1/presenters"
 )
 
+// Client é a estrutura que representa o cliente do banco de dados
 type Client struct {
 	DB *gorm.DB
 }
 
+// NewClient cria uma nova instância do cliente do banco de dados
 func NewClient() (*Client, error) {
 	logger := logrus.New()
 	logger.Info("About to connect to DB")

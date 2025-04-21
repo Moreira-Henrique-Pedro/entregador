@@ -1,3 +1,4 @@
+// package mongodb contem implementações específicas para o MongoDB, incluindo repositórios e clientes.
 package mongodb
 
 import (
@@ -11,11 +12,13 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+// ResidentRepository é a estrutura que representa o repositório de residentes
 type ResidentRepository struct {
 	collection mongoClient.MongoCollectionPort
 	logger     *logrus.Logger
 }
 
+// NewResidentRepository cria uma nova instância de ResidentRepository
 func NewResidentRepository(client mongoClient.MongoCollectionPort) ports.ResidentRepositoryPort {
 	return &ResidentRepository{
 		collection: client,
@@ -23,6 +26,7 @@ func NewResidentRepository(client mongoClient.MongoCollectionPort) ports.Residen
 	}
 }
 
+// Create insere um novo residente no repositório
 func (r *ResidentRepository) Create(ctx context.Context, resident *entities.Resident) error {
 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -38,6 +42,7 @@ func (r *ResidentRepository) Create(ctx context.Context, resident *entities.Resi
 	return nil
 }
 
+// GetByApartment busca um residente pelo número do apartamento
 func (r *ResidentRepository) GetByApartment(ctx context.Context, apartamento string) (*entities.Resident, error) {
 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -54,6 +59,7 @@ func (r *ResidentRepository) GetByApartment(ctx context.Context, apartamento str
 	return &result, nil
 }
 
+// Update atualiza os dados de um residente
 func (r *ResidentRepository) Update(ctx context.Context, resident *entities.Resident) error {
 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -72,6 +78,7 @@ func (r *ResidentRepository) Update(ctx context.Context, resident *entities.Resi
 	return nil
 }
 
+// Delete remove um residente do repositório
 func (r *ResidentRepository) Delete(ctx context.Context, apartamento string) error {
 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
