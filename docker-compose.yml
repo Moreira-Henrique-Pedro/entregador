@@ -9,15 +9,21 @@ services:
       - postgres
       - mongodb
     environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=mydb
+      - APP_ENV=local
+      - DB_HOST=postgres
+      - DB_USER=postgres
+      - DB_PASS=password
+      - DB_DBNAME=entregador
+      - DB_PORT=5432
+      - DB_SSLMODE=disable
+      - DB_TIMEZONE=UTC
       - MONGO_URI=mongodb://user:password@mongodb:27017/mydb
       - MONGO_DB_NAME=mydb
       - TWILIO_ACC_SID=${TWILIO_ACC_SID}
       - TWILIO_TOKEN=${TWILIO_TOKEN}
       - TWILIO_FROM=${TWILIO_FROM}
+    volumes:
+      - ./configs/environments/.env:/app/.env   # Ajuste aqui para garantir que o arquivo .env seja montado
     networks:
       - entregador-network
     restart: unless-stopped

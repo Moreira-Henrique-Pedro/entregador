@@ -7,7 +7,7 @@ up:
 ## Inicializa toda a aplicação
 app-up:
 	docker compose -f ./docker-compose.yml up --build -d
-	./scripts/run/run.application.sh
+	go run cmd/entregador/main.go
 
 ## rodar todos os testes unitários
 test:

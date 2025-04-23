@@ -4,15 +4,14 @@ import (
 	"log"
 	"os"
 
-	"github.com/joho/godotenv"
-	"github.com/sirupsen/logrus"
-
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/mongodb"
 	mongodbClient "github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/mongodb/client"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/postgres"
 	postgresClient "github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/postgres/client"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/twilio"
 	twilioClient "github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/twilio/client"
+	"github.com/joho/godotenv"
+	"github.com/sirupsen/logrus"
 )
 
 func init() {
@@ -23,6 +22,7 @@ func init() {
 }
 
 func main() {
+	// Criação do logger
 	logger := logrus.New()
 	logger.Info("Starting application...")
 
@@ -55,6 +55,4 @@ func main() {
 	// MongoDB repository setup
 	residentRepo := mongodb.NewResidentRepository(collection)
 	logger.Infof("Resident repository created: %+v", residentRepo)
-
-	// Aqui você pode seguir com suas handlers/usecases se necessário
 }
