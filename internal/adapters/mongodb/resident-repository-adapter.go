@@ -93,3 +93,20 @@ func (r *ResidentRepository) Delete(ctx context.Context, apartamento string) err
 	r.logger.Info("Resident deleted: ", apartamento)
 	return nil
 }
+
+// GetByDeliveryID busca um residente pelo ID da entrega associada
+func (r *ResidentRepository) GetByDeliveryID(ctx context.Context, deliveryID string) (*entities.Resident, error) {
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	var result entities.Resident
+	err := r.collection.FindOne(ctx, bson.M{"deliveries": deliveryID}).Decode(&result)
+	if err != nil {
+		r.logger.Error("Failed to get resident by delivery ID: ", err)
+		return nil, err
+	}
+
+	r.logger.Info("Resident found by delivery ID: ", deliveryID)
+	return &result, nil
+}

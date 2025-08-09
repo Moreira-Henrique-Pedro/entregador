@@ -65,6 +65,29 @@ func (_m *ResidentRepositoryPort) GetByApartment(ctx context.Context, apartament
 	return r0, r1
 }
 
+// GetByDeliveryID provides a mock function with given fields: ctx, deliveryID
+func (_m *ResidentRepositoryPort) GetByDeliveryID(ctx context.Context, deliveryID string) (*entities.Resident, error) {
+	ret := _m.Called(ctx, deliveryID)
+
+	var r0 *entities.Resident
+	if rf, ok := ret.Get(0).(func(context.Context, string) *entities.Resident); ok {
+		r0 = rf(ctx, deliveryID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*entities.Resident)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, deliveryID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // Update provides a mock function with given fields: ctx, resident
 func (_m *ResidentRepositoryPort) Update(ctx context.Context, resident *entities.Resident) error {
 	ret := _m.Called(ctx, resident)

@@ -52,8 +52,8 @@ func TestCreateDeliveryUseCaseExecuteSuccess(t *testing.T) {
 			d.PackageType == inputDelivery.PackageType
 	})).Return(createdDelivery, nil)
 
-	mockResidentRepo.On("GetByApartment", ctx, "101").Return(resident, nil)
-	mockTwilio.On("SendWhatsAppMessage", ctx, "+5511999998888", expectedMessage).Return(nil)
+	mockResidentRepo.On("GetByApartment", ctx, createdDelivery.ApNum).Return(resident, nil)
+	mockTwilio.On("SendWhatsAppMessage", ctx, resident.Resident[0].Telefone, expectedMessage).Return(nil)
 
 	result, err := useCase.Execute(ctx, inputDelivery)
 
@@ -169,7 +169,7 @@ func TestCreateDeliveryUseCaseEmptyResidentList(t *testing.T) {
 	}
 
 	mockDeliveryRepo.On("CreateDelivery", ctx, mock.Anything).Return(createdDelivery, nil)
-	mockResidentRepo.On("GetByApartment", ctx, "101").Return(emptyResident, nil)
+	mockResidentRepo.On("GetByApartment", ctx, emptyResident.Resident[0].Telefone).Return(emptyResident, nil)
 
 	// Act
 	result, err := useCase.Execute(ctx, inputDelivery)
@@ -218,10 +218,10 @@ func TestCreateDeliveryUseCaseSendMessageError(t *testing.T) {
 	expectedMessage := "Olá Maria Silva, você tem uma entrega aguardando na portaria"
 
 	mockDeliveryRepo.On("CreateDelivery", ctx, mock.Anything).Return(createdDelivery, nil)
-	mockResidentRepo.On("GetByApartment", ctx, "101").Return(resident, nil)
+	mockResidentRepo.On("GetByApartment", ctx, createdDelivery.ApNum).Return(resident, nil)
 
 	mockErr := errors.New("erro na API do Twilio")
-	mockTwilio.On("SendWhatsAppMessage", ctx, "+5511999998888", expectedMessage).Return(mockErr)
+	mockTwilio.On("SendWhatsAppMessage", ctx, resident.Resident[0].Telefone, expectedMessage).Return(mockErr)
 
 	// Act
 	result, err := useCase.Execute(ctx, inputDelivery)
