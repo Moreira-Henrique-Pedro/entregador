@@ -5,20 +5,20 @@ import (
 	"net/http"
 
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/entrypoints/v1/presenters"
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/usecases"
+	deliveryUsecases "github.com/Moreira-Henrique-Pedro/entregador/internal/domain/usecases/delivery"
 	"github.com/gin-gonic/gin"
 )
 
 // DeliveryController é a estrutura que representa a controller de entregas
 type DeliveryController struct {
-	createDeliveryUseCase usecases.CreateDeliveryUseCasePort
-	deleteDeliveryUseCase usecases.DeleteDeliveryUseCasePort
+	createDeliveryUseCase deliveryUsecases.CreateDeliveryUseCasePort
+	deleteDeliveryUseCase deliveryUsecases.DeleteDeliveryUseCasePort
 }
 
 // NewDeliveryController cria uma nova instância de DeliveryController
 func NewDeliveryController(
-	createDeliveryUseCase usecases.CreateDeliveryUseCasePort,
-	deleteDeliveryUseCase usecases.DeleteDeliveryUseCasePort,
+	createDeliveryUseCase deliveryUsecases.CreateDeliveryUseCasePort,
+	deleteDeliveryUseCase deliveryUsecases.DeleteDeliveryUseCasePort,
 ) *DeliveryController {
 	return &DeliveryController{
 		createDeliveryUseCase: createDeliveryUseCase,
@@ -38,38 +38,46 @@ func (controller *DeliveryController) CreateDelivery(c *gin.Context) {
 	var deliveryDTO presenters.DeliveryDTO
 
 	if err := c.ShouldBindJSON(&deliveryDTO); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		responseError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	delivery := deliveryDTO.ToEntity()
 	createdDelivery, err := controller.createDeliveryUseCase.Execute(c.Request.Context(), delivery)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		responseError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"message": "Entrega registrada com sucesso",
-		"id":      createdDelivery.ID,
-	})
+	// Converte a entrega criada para o formato de resposta
+	responseDTO := &presenters.DeliveryResponseDTO{}
+	responseDTO.ToResponseDTO(*createdDelivery)
+	c.JSON(http.StatusCreated, responseDTO)
 }
 
 // DeleteDelivery é o manipulador para excluir uma entrega existente
 func (controller *DeliveryController) DeleteDelivery(c *gin.Context) {
 	deliveryID := c.Param("id")
 	if deliveryID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID da entrega não pode ser vazio"})
+		responseError(c, http.StatusBadRequest, "ID da entrega não pode ser vazio")
 		return
 	}
 
 	err := controller.deleteDeliveryUseCase.Execute(c.Request.Context(), deliveryID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		responseError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	c.JSON(http.StatusNoContent, gin.H{
 		"message": "Entrega excluída com sucesso",
 	})
+}
+
+func responseError(c *gin.Context, statusCode int, message string) {
+	errorDTO := presenters.ErrorDTO{
+		Code:    statusCode,
+		Message: message,
+	}
+	c.JSON(statusCode, errorDTO)
 }

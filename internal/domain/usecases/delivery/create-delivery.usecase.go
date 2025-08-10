@@ -4,6 +4,7 @@ package usecases
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/ports"
@@ -12,7 +13,7 @@ import (
 
 // CreateDeliveryUseCasePort é a interface que define os métodos para o caso de uso de criação de entrega
 type CreateDeliveryUseCasePort interface {
-	Execute(ctx context.Context, delivery entities.Delivery) (*entities.Delivery, error)
+	Execute(ctx context.Context, delivery entities.Delivery) (*entities.DeliveryResponse, error)
 }
 
 // CreateDeliveryUseCase é a estrutura que implementa o caso de uso de criação de entrega
@@ -36,7 +37,7 @@ func NewCreateDeliveryUseCase(
 }
 
 // Execute executa o caso de uso de criação de entrega
-func (usecase *CreateDeliveryUseCase) Execute(ctx context.Context, delivery entities.Delivery) (*entities.Delivery, error) {
+func (usecase *CreateDeliveryUseCase) Execute(ctx context.Context, delivery entities.Delivery) (*entities.DeliveryResponse, error) {
 	log := logrus.WithFields(logrus.Fields{
 		"apNum":       delivery.ApNum,
 		"packageType": delivery.PackageType,
@@ -45,22 +46,25 @@ func (usecase *CreateDeliveryUseCase) Execute(ctx context.Context, delivery enti
 
 	createdDelivery, err := usecase.handleCreateDelivery(ctx, delivery)
 	if err != nil {
-		return nil, err
+		log.WithError(err).Error("Erro ao criar entrega")
+		return usecase.buildResponseError(err), err
 	}
 
 	resident, err := usecase.handleResident(ctx, *createdDelivery)
 	if err != nil {
-		log.WithError(err).Warn("Erro ao buscar residente, continuando sem notificação")
+		log.WithError(err).Warn("Erro ao buscar morador, entrega já foi registrada")
+		return usecase.buildResponseError(err), err
 	}
 
 	if resident != nil && len(resident.Resident) > 0 {
 		if err := usecase.handleSendMessage(ctx, *resident); err != nil {
 			log.WithError(err).Warn("Erro ao enviar mensagem, entrega já foi registrada")
+			return usecase.buildResponseError(err), err
 		}
 	}
 
 	log.Info("Entrega registrada com sucesso")
-	return createdDelivery, nil
+	return usecase.buildResponseSuccess(createdDelivery), nil
 }
 
 func (usecase *CreateDeliveryUseCase) handleCreateDelivery(ctx context.Context, delivery entities.Delivery) (*entities.Delivery, error) {
@@ -118,4 +122,26 @@ func (usecase *CreateDeliveryUseCase) handleSendMessage(ctx context.Context, res
 
 	log.Info("Mensagem enviada com sucesso")
 	return nil
+}
+
+func (usecase *CreateDeliveryUseCase) buildResponseSuccess(delivery *entities.Delivery) *entities.DeliveryResponse {
+	response := &entities.DeliveryResponse{
+		ID:          delivery.ID,
+		ApNum:       delivery.ApNum,
+		PackageType: delivery.PackageType,
+		Urgency:     delivery.Urgency,
+		Status:      delivery.Status,
+		Erro:        entities.DeliveryResponseError{},
+	}
+	return response
+}
+
+func (usecase *CreateDeliveryUseCase) buildResponseError(err error) *entities.DeliveryResponse {
+	response := &entities.DeliveryResponse{
+		Erro: entities.DeliveryResponseError{
+			Code:    http.StatusInternalServerError,
+			Message: err.Error(),
+		},
+	}
+	return response
 }

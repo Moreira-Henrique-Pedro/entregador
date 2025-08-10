@@ -7,23 +7,32 @@ import (
 
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/ports/mocks"
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/usecases"
+	usecases "github.com/Moreira-Henrique-Pedro/entregador/internal/domain/usecases/delivery"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-func TestCreateDeliveryUseCaseExecuteSuccess(t *testing.T) {
-	mockDeliveryRepo := new(mocks.DeliveryRepositoryPort)
-	mockResidentRepo := new(mocks.ResidentRepositoryPort)
-	mockTwilio := new(mocks.TwilioPort)
-
-	useCase := usecases.NewCreateDeliveryUseCase(
+func setupCreateDeliveryUseCase() (
+	ctx context.Context,
+	mockDeliveryRepo *mocks.DeliveryRepositoryPort,
+	mockResidentRepo *mocks.ResidentRepositoryPort,
+	mockTwilio *mocks.TwilioPort,
+	useCase usecases.CreateDeliveryUseCasePort,
+) {
+	ctx = context.Background()
+	mockDeliveryRepo = new(mocks.DeliveryRepositoryPort)
+	mockResidentRepo = new(mocks.ResidentRepositoryPort)
+	mockTwilio = new(mocks.TwilioPort)
+	useCase = usecases.NewCreateDeliveryUseCase(
 		mockDeliveryRepo,
 		mockResidentRepo,
 		mockTwilio,
 	)
+	return
+}
 
-	ctx := context.Background()
+func TestCreateDeliveryUseCaseExecuteSuccess(t *testing.T) {
+	ctx, mockDeliveryRepo, mockResidentRepo, mockTwilio, useCase := setupCreateDeliveryUseCase()
 
 	inputDelivery := entities.Delivery{
 		ApNum:       "101",
@@ -67,17 +76,7 @@ func TestCreateDeliveryUseCaseExecuteSuccess(t *testing.T) {
 
 func TestCreateDeliveryUseCaseCreateDeliveryError(t *testing.T) {
 	// Arrange
-	mockDeliveryRepo := new(mocks.DeliveryRepositoryPort)
-	mockResidentRepo := new(mocks.ResidentRepositoryPort)
-	mockTwilio := new(mocks.TwilioPort)
-
-	useCase := usecases.NewCreateDeliveryUseCase(
-		mockDeliveryRepo,
-		mockResidentRepo,
-		mockTwilio,
-	)
-
-	ctx := context.Background()
+	ctx, mockDeliveryRepo, mockResidentRepo, mockTwilio, useCase := setupCreateDeliveryUseCase()
 
 	inputDelivery := entities.Delivery{
 		ApNum:       "101",
@@ -103,17 +102,7 @@ func TestCreateDeliveryUseCaseCreateDeliveryError(t *testing.T) {
 
 func TestCreateDeliveryUseCaseResidentNotFound(t *testing.T) {
 	// Arrange
-	mockDeliveryRepo := new(mocks.DeliveryRepositoryPort)
-	mockResidentRepo := new(mocks.ResidentRepositoryPort)
-	mockTwilio := new(mocks.TwilioPort)
-
-	useCase := usecases.NewCreateDeliveryUseCase(
-		mockDeliveryRepo,
-		mockResidentRepo,
-		mockTwilio,
-	)
-
-	ctx := context.Background()
+	ctx, mockDeliveryRepo, mockResidentRepo, mockTwilio, useCase := setupCreateDeliveryUseCase()
 
 	inputDelivery := entities.Delivery{
 		ApNum:       "101",
@@ -141,17 +130,7 @@ func TestCreateDeliveryUseCaseResidentNotFound(t *testing.T) {
 
 func TestCreateDeliveryUseCaseEmptyResidentList(t *testing.T) {
 	// Arrange
-	mockDeliveryRepo := new(mocks.DeliveryRepositoryPort)
-	mockResidentRepo := new(mocks.ResidentRepositoryPort)
-	mockTwilio := new(mocks.TwilioPort)
-
-	useCase := usecases.NewCreateDeliveryUseCase(
-		mockDeliveryRepo,
-		mockResidentRepo,
-		mockTwilio,
-	)
-
-	ctx := context.Background()
+	ctx, mockDeliveryRepo, mockResidentRepo, mockTwilio, useCase := setupCreateDeliveryUseCase()
 
 	inputDelivery := entities.Delivery{
 		ApNum:       "101",
@@ -183,17 +162,7 @@ func TestCreateDeliveryUseCaseEmptyResidentList(t *testing.T) {
 
 func TestCreateDeliveryUseCaseSendMessageError(t *testing.T) {
 	// Arrange
-	mockDeliveryRepo := new(mocks.DeliveryRepositoryPort)
-	mockResidentRepo := new(mocks.ResidentRepositoryPort)
-	mockTwilio := new(mocks.TwilioPort)
-
-	useCase := usecases.NewCreateDeliveryUseCase(
-		mockDeliveryRepo,
-		mockResidentRepo,
-		mockTwilio,
-	)
-
-	ctx := context.Background()
+	ctx, mockDeliveryRepo, mockResidentRepo, mockTwilio, useCase := setupCreateDeliveryUseCase()
 
 	inputDelivery := entities.Delivery{
 		ApNum:       "101",
