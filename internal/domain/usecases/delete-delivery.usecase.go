@@ -44,51 +44,68 @@ func (usecase *DeleteDeliveryUseCase) Execute(ctx context.Context, deliveryID st
 		return fmt.Errorf("ID da entrega não pode ser vazio")
 	}
 
-	resident, err := usecase.handleResident(ctx, deliveryID)
+	delivery, err := usecase.getDelivery(ctx, deliveryID)
 	if err != nil {
-		log.WithError(err).Warn("Erro ao buscar residente, continuando sem notificação")
+		log.WithError(err).Warn("Erro ao buscar entrega")
+		return err
 	}
 
-	err = usecase.deliveryRepo.DeleteDeliveryByID(ctx, deliveryID)
-	if err != nil {
-		log.WithError(err).Error("Erro ao excluir entrega")
-		return fmt.Errorf("erro ao excluir entrega: %w", err)
+	if delivery == nil {
+		log.Warn("Entrega não encontrada")
+		return err
 	}
 
-	if resident != nil && len(resident.Resident) > 0 {
-		if err := usecase.handleSendMessage(ctx, *resident); err != nil {
-			log.WithError(err).Warn("Erro ao enviar mensagem, entrega já foi registrada")
-		}
+	appNum := delivery.ApNum
+
+	if err := usecase.deleteDelivery(ctx, deliveryID); err != nil {
+		log.WithError(err).Warn("Erro ao excluir entrega")
+		return err
+	}
+
+	if err := usecase.sendMessage(ctx, appNum); err != nil {
+		log.WithError(err).WithField("apartment", appNum).Warn("Erro ao enviar mensagem para o apartamento")
 	}
 
 	return nil
 }
 
-func (usecase *DeleteDeliveryUseCase) handleResident(ctx context.Context, deliveryID string) (*entities.Resident, error) {
+func (usecase *DeleteDeliveryUseCase) deleteDelivery(ctx context.Context, deliveryID string) error {
 	log := logrus.WithField("deliveryID", deliveryID)
-
-	resident, err := usecase.residentRepo.GetByDeliveryID(ctx, deliveryID)
+	err := usecase.deliveryRepo.DeleteDeliveryByID(ctx, deliveryID)
 	if err != nil {
-		log.WithError(err).Error("Erro ao buscar morador no banco de dados")
-		return nil, nil
+		log.WithError(err).Error("Erro ao excluir entrega")
+		return fmt.Errorf("erro ao excluir entrega: %w", err)
 	}
-
-	if resident == nil || len(resident.Resident) == 0 {
-		log.Warn("Morador não encontrado")
-		return nil, nil
-	}
-
-	residentInfo := resident.Resident[0]
-	log.WithFields(logrus.Fields{
-		"name":  residentInfo.Nome,
-		"phone": residentInfo.Telefone,
-	}).Info("Morador encontrado, preparando mensagem")
-
-	return resident, nil
+	return nil
 }
 
-func (usecase *DeleteDeliveryUseCase) handleSendMessage(ctx context.Context, resident entities.Resident) error {
-	log := logrus.WithField("Send Message To", resident.Resident[0].Telefone)
+func (usecase *DeleteDeliveryUseCase) getDelivery(ctx context.Context, deliveryID string) (*entities.Delivery, error) {
+	log := logrus.WithField("deliveryID", deliveryID)
+
+	delivery, err := usecase.deliveryRepo.GetDeliveryByID(ctx, deliveryID)
+	if err != nil {
+		log.WithError(err).Error("Erro ao buscar entrega no banco de dados")
+		return nil, err
+	}
+
+	log.WithFields(logrus.Fields{
+		"delivery":    delivery.ID,
+		"apNum":       delivery.ApNum,
+		"packageType": delivery.PackageType,
+		"urgency":     delivery.Urgency,
+	}).Info("Entrega encontrada, buscando residente")
+
+	return delivery, nil
+}
+
+func (usecase *DeleteDeliveryUseCase) sendMessage(ctx context.Context, appNum string) error {
+	log := logrus.WithField("Send Message To", appNum)
+
+	resident, err := usecase.residentRepo.GetByApartment(ctx, appNum)
+	if err != nil {
+		log.WithError(err).Error("Erro ao buscar residente pelo número do apartamento")
+		return fmt.Errorf("erro ao buscar residente: %w", err)
+	}
 
 	// TODO: Criar constantes com mensagens
 	message := fmt.Sprintf(
@@ -96,7 +113,7 @@ func (usecase *DeleteDeliveryUseCase) handleSendMessage(ctx context.Context, res
 		resident.Resident[0].Nome,
 	)
 
-	err := usecase.messaging.SendWhatsAppMessage(ctx, resident.Resident[0].Telefone, message)
+	err = usecase.messaging.SendWhatsAppMessage(ctx, resident.Resident[0].Telefone, message)
 	if err != nil {
 		log.WithError(err).Error("Erro ao enviar mensagem via Twilio")
 		return nil
