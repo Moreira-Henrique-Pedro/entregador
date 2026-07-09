@@ -12,3 +12,6 @@ app-up:
 ## rodar todos os testes unitários
 test:
 	go test -v -coverprofile=coverage.out ./internal/...
+
+down:
+	docker compose -f ./docker-compose.yml down

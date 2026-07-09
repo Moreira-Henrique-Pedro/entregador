@@ -1,0 +1,15 @@
+{
+  "app": "delivery-subscriber",
+  "consumer_group": "delivery-resident-management-events-subscriber",
+  "consumer_name": "delivery_subscriber_resident_management_events_consumer",
+  "topic": "resident-management.events",
+  "timeout": "30s",
+  "cluster": "delivery",
+  "dlq_cluster": "delivery-dlq",
+  "retry": {
+    "max_retries": 5,
+    "initial_interval": "4s",
+    "max_interval": "60s",
+    "multiplier": 2
+  }
+}
