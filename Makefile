@@ -1,4 +1,4 @@
-.PHONY: up app-up api docker-build-api
+.PHONY: up app-up api docker-build-api test down linter
 
 ## Inicializa apenas o docker-compose
 up:
@@ -23,3 +23,7 @@ test:
 
 down:
 	docker compose -f ./docker-compose.yml down
+
+## Roda o golangci-lint com as regras do .golangci.yml
+linter:
+	golangci-lint run ./...

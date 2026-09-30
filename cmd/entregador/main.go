@@ -78,10 +78,12 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	app, err := initializeApplication(ctx)
+	app, err := initializeApplication()
 	if err != nil {
 		log.Fatalf("failed to initialize application: %v", err)
 	}
+
+	ctx = app.Logger.AddToContext(ctx, app.Logger)
 
 	app.Logger.Info("Application initialized",
 		"version", version,
@@ -107,6 +109,7 @@ func main() {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	shutdownCtx = app.Logger.AddToContext(shutdownCtx, app.Logger)
 
 	if err := shutdownApplication(shutdownCtx, app); err != nil {
 		app.Logger.Error("Application shutdown finished with errors", "error", err.Error())
@@ -116,7 +119,7 @@ func main() {
 	app.Logger.Info("Application shutdown completed")
 }
 
-func initializeApplication(ctx context.Context) (*Application, error) {
+func initializeApplication() (*Application, error) {
 	appConfigs, err := config.NewConfig()
 	if err != nil {
 		return nil, fmt.Errorf("load configs: %w", err)
@@ -132,8 +135,6 @@ func initializeApplication(ctx context.Context) (*Application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create logger: %w", err)
 	}
-
-	ctx = logger.AddToContext(ctx, logger)
 
 	serviceProviders, err := providers.NewServiceProviders(appConfigs.Envs, logger)
 	if err != nil {
