@@ -1,5 +1,5 @@
 # Dockerfile
-FROM golang:1.23.8 AS builder
+FROM golang:1.25 AS builder
 
 WORKDIR /app
 
@@ -12,8 +12,11 @@ RUN go mod download
 # Copiar o código fonte
 COPY . .
 
+# Binário a compilar: entregador (consumer Kafka) ou api (HTTP)
+ARG APP=entregador
+
 # Compilar a aplicação
-RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/entregador
+RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/${APP}
 
 # Imagem final
 FROM alpine:latest

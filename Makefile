@@ -1,4 +1,4 @@
-.PHONY: up app-up
+.PHONY: up app-up api docker-build-api
 
 ## Inicializa apenas o docker-compose
 up:
@@ -8,6 +8,14 @@ up:
 app-up:
 	docker compose -f ./docker-compose.yml up --build -d
 	./scripts/run/run.application.sh
+
+## Roda a API HTTP de consulta localmente
+api:
+	go run ./cmd/api
+
+## Gera a imagem Docker da API HTTP
+docker-build-api:
+	docker build --build-arg APP=api -t entregador-api .
 
 ## rodar todos os testes unitários
 test:

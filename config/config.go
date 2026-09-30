@@ -30,6 +30,9 @@ type Environment struct {
 		Name     string `env:"APP_NAME,default=delivery-subscriber"`
 		Version  string `env:"APP_VERSION,default=1.0.0"`
 	}
+	HTTP struct {
+		Port string `env:"HTTP_PORT,default=8081"`
+	}
 	MongoDB struct {
 		URI      string `env:"MONGODB_URI"`
 		Database string `env:"MONGODB_DATABASE"`
@@ -41,7 +44,7 @@ type Environment struct {
 		BrokerHosts             []string
 	}
 	Delivery struct {
-		URL string `env:"DELIVERY_URL,required"`
+		URL string `env:"DELIVERY_URL"`
 	}
 }
 

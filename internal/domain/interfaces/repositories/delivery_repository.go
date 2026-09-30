@@ -7,8 +7,9 @@ import (
 )
 
 type DeliveryRepositoryPort interface {
-	Create(ctx context.Context, delivery *entities.Delivery) error
-	GetByID(ctx context.Context, id string) (*entities.Delivery, error)
-	Update(ctx context.Context, delivery *entities.Delivery) error
-	DeleteByDeliveryID(ctx context.Context, deliveryID string) error
+	Insert(ctx context.Context, delivery *entities.Delivery) error
+	// FindByApartment returns every delivery of the apartment; a nil status means any status.
+	FindByApartment(ctx context.Context, apartment string, status *entities.DeliveryStatus) ([]*entities.Delivery, error)
+	// MarkAsDeleted sets a pending delivery as deleted (picked up).
+	MarkAsDeleted(ctx context.Context, deliveryID string) error
 }

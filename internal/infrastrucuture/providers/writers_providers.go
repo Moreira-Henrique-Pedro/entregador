@@ -2,21 +2,14 @@ package providers
 
 import (
 	"context"
-	"fmt"
 	"reflect"
-	"time"
 
 	"github.com/Moreira-Henrique-Pedro/entregador/config"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/application/commands"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/application/writers"
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/infrastrucuture/repositories"
-	mongodb "github.com/Moreira-Henrique-Pedro/entregador/internal/infrastrucuture/repositories/client"
 	pkgEvents "github.com/Moreira-Henrique-Pedro/entregador/pkg/events"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
-
-const residentsCollectionName = "residents"
 
 type WriterProviders struct {
 	Registry    *pkgEvents.EventHandlerRegistry
@@ -24,24 +17,27 @@ type WriterProviders struct {
 }
 
 func NewWriterProviders(env *config.Environment, serviceProviders *ServiceProviders) (*WriterProviders, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(env.MongoDB.URI))
+	repos, err := newRepositoryProviders(env)
 	if err != nil {
-		return nil, fmt.Errorf("connect mongodb: %w", err)
+		return nil, err
 	}
 
-	collection := client.Database(env.MongoDB.Database).Collection(residentsCollectionName)
-	residentRepository := repositories.NewMongoDBResidentRepository(mongodb.NewMongoCollectionClient(collection))
-	processCreateResidentWriter := writers.NewProcessCreateResident(residentRepository)
+	processCreateResidentWriter := writers.NewProcessCreateResident(repos.residentRepository)
+	processUpdateResidentWriter := writers.NewProcessUpdateResident(repos.residentRepository)
+	processDeleteResidentWriter := writers.NewProcessDeleteResident(repos.residentRepository)
+	processCreateDeliveryWriter := writers.NewProcessCreateDelivery(repos.deliveryRepository, repos.residentRepository)
+	processDeleteDeliveryWriter := writers.NewProcessDeleteDelivery(repos.deliveryRepository)
 
 	registry := pkgEvents.NewEventHandlerRegistry()
 	registerWriter(registry, commands.ProcessCreateResidentCommandType, processCreateResidentWriter.Handle)
+	registerWriter(registry, commands.ProcessUpdateResidentCommandType, processUpdateResidentWriter.Handle)
+	registerWriter(registry, commands.ProcessDeleteResidentCommandType, processDeleteResidentWriter.Handle)
+	registerWriter(registry, commands.ProcessCreateDeliveryCommandType, processCreateDeliveryWriter.Handle)
+	registerWriter(registry, commands.ProcessDeleteDeliveryCommandType, processDeleteDeliveryWriter.Handle)
 
 	return &WriterProviders{
 		Registry:    registry,
-		mongoClient: client,
+		mongoClient: repos.mongoClient,
 	}, nil
 }
 

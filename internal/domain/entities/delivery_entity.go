@@ -5,10 +5,11 @@ import "time"
 type Delivery struct {
 	ID          string
 	DeliveryID  string
-	ApNum       string
+	Apartment   string
+	ResidentID  string
 	PackageType string
 	Urgency     string
-	Status      string
+	Status      DeliveryStatus
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeleteAt    time.Time

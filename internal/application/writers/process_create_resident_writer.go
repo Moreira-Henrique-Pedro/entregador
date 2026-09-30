@@ -26,7 +26,11 @@ func (w *ProcessCreateResident) Handle(ctx context.Context, command *commands.Pr
 
 	resident := w.buildResidentEntity(command)
 	if err := w.residentRepository.Insert(ctx, resident); err != nil {
-		return fmt.Errorf("failed to insert resident")
+		return fmt.Errorf("failed to insert resident: %w", err)
+	}
+
+	if err := w.residentRepository.EnsureOtherResident(ctx, command.Apartment); err != nil {
+		return fmt.Errorf("failed to ensure other resident: apartment=%s: %w", command.Apartment, err)
 	}
 
 	logger.Info("Resident created: Name=%s, Apartment=%s, Phone=%s", command.Name, command.Apartment, command.Phone)
@@ -36,9 +40,11 @@ func (w *ProcessCreateResident) Handle(ctx context.Context, command *commands.Pr
 
 func (w *ProcessCreateResident) buildResidentEntity(command *commands.ProcessCreateResidentCommand) *entities.Resident {
 	return &entities.Resident{
+		ID:         command.CommandID,
 		ResidentID: command.CommandID,
 		Apartment:  command.Apartment,
 		Name:       command.Name,
 		Phone:      command.Phone,
+		Type:       entities.ResidentTypeResident,
 	}
 }

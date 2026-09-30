@@ -32,9 +32,37 @@ func NewTransporterProviders(
 		subscriberCfg.Topic,
 	)
 
+	updateResidentTransporter := transporters.NewUpdateResidentTransporter(
+		publisher,
+		deliveryInternalCommands,
+		subscriberCfg.Topic,
+	)
+
+	deleteResidentTransporter := transporters.NewDeleteResidentTransporter(
+		publisher,
+		deliveryInternalCommands,
+		subscriberCfg.Topic,
+	)
+
+	createDeliveryTransporter := transporters.NewCreateDeliveryTransporter(
+		publisher,
+		deliveryInternalCommands,
+		subscriberCfg.Topic,
+	)
+
+	deleteDeliveryTransporter := transporters.NewDeleteDeliveryTransporter(
+		publisher,
+		deliveryInternalCommands,
+		subscriberCfg.Topic,
+	)
+
 	registry := pkgEvents.NewEventHandlerRegistry()
 
 	register(registry, events.CreateResidentEventType, residentTransporter.Handle)
+	register(registry, events.UpdateResidentEventType, updateResidentTransporter.Handle)
+	register(registry, events.DeleteResidentEventType, deleteResidentTransporter.Handle)
+	register(registry, events.CreateDeliveryEventType, createDeliveryTransporter.Handle)
+	register(registry, events.DeleteDeliveryEventType, deleteDeliveryTransporter.Handle)
 
 	return &TransporterProviders{
 		Registry: registry,
