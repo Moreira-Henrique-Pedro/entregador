@@ -10,6 +10,7 @@ import (
 
 	"github.com/IBM/sarama"
 	"github.com/Moreira-Henrique-Pedro/entregador/config"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/pubsub"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/infrastrucuture/providers"
 	pkgEvents "github.com/Moreira-Henrique-Pedro/entregador/pkg/events"
 	appLogger "github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
@@ -39,7 +40,7 @@ func processMessage(ctx context.Context, app *Application, kafkaMessage *watermi
 
 	pubsubMessage, err := appWatermill.ConvertWatermillToPubsub(kafkaMessage, nil)
 	if err != nil {
-		return fmt.Errorf("convert kafka message: %w", err)
+		return permanent(fmt.Errorf("convert kafka message: %w", err))
 	}
 
 	messageLogger := app.Logger.With(
@@ -49,6 +50,7 @@ func processMessage(ctx context.Context, app *Application, kafkaMessage *watermi
 		"topic", app.Configs.SubscriberConfigs.Topic,
 	)
 	messageCtx = messageLogger.AddToContext(messageCtx, messageLogger)
+	messageCtx = pubsub.ContextWithSourceMessageID(messageCtx, sourceMessageID(app.Configs.SubscriberConfigs.Topic, kafkaMessage))
 
 	messageLogger.Info("Processing Kafka message")
 
@@ -58,6 +60,18 @@ func processMessage(ctx context.Context, app *Application, kafkaMessage *watermi
 
 	messageLogger.Info("Kafka message processed successfully")
 	return nil
+}
+
+// sourceMessageID identifies the consumed message across redeliveries: the producer's
+// message UUID when present, otherwise its topic/partition/offset.
+func sourceMessageID(topic string, kafkaMessage *watermillMessage.Message) string {
+	if kafkaMessage.UUID != "" {
+		return kafkaMessage.UUID
+	}
+
+	partition, _ := watermillKafka.MessagePartitionFromCtx(kafkaMessage.Context())
+	offset, _ := watermillKafka.MessagePartitionOffsetFromCtx(kafkaMessage.Context())
+	return fmt.Sprintf("%s/%d/%d", topic, partition, offset)
 }
 
 func main() {
@@ -210,18 +224,66 @@ func runApplication(ctx context.Context, app *Application) error {
 				return nil
 			}
 
-			if err := processMessage(ctx, app, msg); err != nil {
-				app.Logger.Error("Failed to process Kafka message",
-					"error", err.Error(),
-					"message_uuid", msg.UUID,
-				)
-				msg.Nack()
-				continue
-			}
-
-			msg.Ack()
+			handleMessage(ctx, app, msg)
 		}
 	}
+}
+
+// handleMessage processes the message with retries and acks it on success or once it is
+// parked in the DLQ; it only nacks when the DLQ publish fails or on shutdown, so no message is lost.
+func handleMessage(ctx context.Context, app *Application, msg *watermillMessage.Message) {
+	policy := newRetryPolicy(app.Configs.SubscriberConfigs.RetryConfig)
+
+	err := policy.run(ctx, func() error {
+		return processMessage(ctx, app, msg)
+	}, func(attempt int, err error, wait time.Duration) {
+		app.Logger.Warn("Retrying Kafka message",
+			"error", err.Error(),
+			"message_uuid", msg.UUID,
+			"attempt", attempt,
+			"wait", wait.String(),
+		)
+	})
+	if err == nil {
+		msg.Ack()
+		return
+	}
+
+	if ctx.Err() != nil {
+		msg.Nack()
+		return
+	}
+
+	app.Logger.Error("Failed to process Kafka message, sending to DLQ",
+		"error", err.Error(),
+		"message_uuid", msg.UUID,
+		"permanent", isPermanent(err),
+		"dlq_topic", app.Configs.Envs.Pubsub.DLQTopic,
+	)
+
+	if dlqErr := publishToDLQ(ctx, app, msg, err); dlqErr != nil {
+		app.Logger.Error("Failed to publish message to DLQ",
+			"error", dlqErr.Error(),
+			"message_uuid", msg.UUID,
+		)
+		msg.Nack()
+		return
+	}
+
+	msg.Ack()
+}
+
+func publishToDLQ(ctx context.Context, app *Application, msg *watermillMessage.Message, processErr error) error {
+	var convertErr error
+	if isPermanent(processErr) {
+		convertErr, processErr = processErr, nil
+	}
+
+	dlqMessage := appWatermill.BuildRawDLQMessage(msg, processErr, convertErr)
+	originalTopic := app.Configs.SubscriberConfigs.Topic
+	dlqMessage.Headers.OriginalTopic = &originalTopic
+
+	return app.ServiceProviders.MessagePublisher.Publish(ctx, app.Configs.Envs.Pubsub.DLQTopic, dlqMessage)
 }
 
 func shutdownApplication(ctx context.Context, app *Application) error {

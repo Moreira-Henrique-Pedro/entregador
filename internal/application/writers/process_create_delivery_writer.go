@@ -7,6 +7,8 @@ import (
 
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/application/commands"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/notifier"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/pubsub"
 	interfaces "github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories"
 	"github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
 )
@@ -14,15 +16,21 @@ import (
 type ProcessCreateDelivery struct {
 	deliveryRepository interfaces.DeliveryRepositoryPort
 	residentRepository interfaces.ResidentRepositoryPort
+	publisher          pubsub.MessagePublisher[any]
+	internalTopic      string
 }
 
 func NewProcessCreateDelivery(
 	deliveryRepository interfaces.DeliveryRepositoryPort,
 	residentRepository interfaces.ResidentRepositoryPort,
+	publisher pubsub.MessagePublisher[any],
+	internalTopic string,
 ) *ProcessCreateDelivery {
 	return &ProcessCreateDelivery{
 		deliveryRepository: deliveryRepository,
 		residentRepository: residentRepository,
+		publisher:          publisher,
+		internalTopic:      internalTopic,
 	}
 }
 
@@ -46,6 +54,12 @@ func (w *ProcessCreateDelivery) Handle(ctx context.Context, command *commands.Pr
 	}
 
 	logger.Info("Delivery created: DeliveryID=%s, Apartment=%s, ResidentID=%s", delivery.DeliveryID, delivery.Apartment, delivery.ResidentID)
+
+	// On failure the command is retried: the insert is deduplicated by id and the
+	// notification is published again, so the resident is still notified.
+	if err := publishNotifyDelivery(ctx, w.publisher, w.internalTopic, delivery.DeliveryID, notifier.NotificationTypeDeliveryArrived); err != nil {
+		return fmt.Errorf("failed to publish internal command ProcessNotifyDelivery: deliveryID=%s: %w", delivery.DeliveryID, err)
+	}
 
 	return nil
 }

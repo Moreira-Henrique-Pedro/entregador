@@ -13,4 +13,7 @@ type Delivery struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeleteAt    time.Time
+	// ArrivalNotifiedAt and PickupNotifiedAt keep a redelivered command from notifying twice.
+	ArrivalNotifiedAt time.Time
+	PickupNotifiedAt  time.Time
 }

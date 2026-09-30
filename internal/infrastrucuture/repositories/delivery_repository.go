@@ -20,10 +20,21 @@ type MongoDBDeliveryRepository struct {
 	collection client.MongoClientCollectionPort
 }
 
-func NewMongoDBDeliveryRepository(client client.MongoClientCollectionPort) interfaces.DeliveryRepositoryPort {
-	_ = client.EnsureUniqueIndex(map[string]interface{}{"delivery_id": 1})
+func NewMongoDBDeliveryRepository(ctx context.Context, client client.MongoClientCollectionPort) (interfaces.DeliveryRepositoryPort, error) {
+	if err := client.EnsureIndexes(ctx, deliveryIndexes()); err != nil {
+		return nil, fmt.Errorf("ensure deliveries indexes: %w", err)
+	}
 	return &MongoDBDeliveryRepository{
 		collection: client,
+	}, nil
+}
+
+func deliveryIndexes() []mongo.IndexModel {
+	return []mongo.IndexModel{
+		{Keys: bson.D{{Key: "delivery_id", Value: 1}}, Options: options.Index().SetUnique(true)},
+		// FindByApartment sorts by creation date, with and without a status filter.
+		{Keys: bson.D{{Key: "apartment", Value: 1}, {Key: createdAtField, Value: -1}}},
+		{Keys: bson.D{{Key: "apartment", Value: 1}, {Key: "status", Value: 1}, {Key: createdAtField, Value: -1}}},
 	}
 }
 
@@ -47,13 +58,25 @@ func (r *MongoDBDeliveryRepository) Insert(ctx context.Context, delivery *entiti
 	return err
 }
 
+func (r *MongoDBDeliveryRepository) FindByDeliveryID(ctx context.Context, deliveryID string) (*entities.Delivery, error) {
+	var model models.Delivery
+	err := r.collection.FindOne(ctx, bson.M{"delivery_id": deliveryID}).Decode(&model)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, deliveryNotFound(deliveryID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return model.ToEntity(), nil
+}
+
 func (r *MongoDBDeliveryRepository) FindByApartment(ctx context.Context, apartment string, status *entities.DeliveryStatus) ([]*entities.Delivery, error) {
 	filter := bson.M{"apartment": apartment}
 	if status != nil {
 		filter["status"] = string(*status)
 	}
 
-	cursor, err := r.collection.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "createdat", Value: -1}}))
+	cursor, err := r.collection.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: createdAtField, Value: -1}}))
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +111,33 @@ func (r *MongoDBDeliveryRepository) MarkAsDeleted(ctx context.Context, deliveryI
 		return err
 	}
 	if result.MatchedCount == 0 {
-		return fmt.Errorf("delivery %s: %w", deliveryID, entities.ErrEntityNotFound)
+		return deliveryNotFound(deliveryID)
 	}
 	return nil
+}
+
+func (r *MongoDBDeliveryRepository) MarkArrivalAsNotified(ctx context.Context, deliveryID string) error {
+	return r.markAsNotified(ctx, deliveryID, arrivalNotifiedAtField)
+}
+
+func (r *MongoDBDeliveryRepository) MarkPickupAsNotified(ctx context.Context, deliveryID string) error {
+	return r.markAsNotified(ctx, deliveryID, pickupNotifiedAtField)
+}
+
+func (r *MongoDBDeliveryRepository) markAsNotified(ctx context.Context, deliveryID, field string) error {
+	now := time.Now().UTC()
+	update := bson.M{"$set": bson.M{field: now, updatedAtField: now}}
+
+	result, err := r.collection.UpdateOne(ctx, bson.M{"delivery_id": deliveryID}, update)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return deliveryNotFound(deliveryID)
+	}
+	return nil
+}
+
+func deliveryNotFound(deliveryID string) error {
+	return fmt.Errorf("delivery %s: %w", deliveryID, entities.ErrEntityNotFound)
 }

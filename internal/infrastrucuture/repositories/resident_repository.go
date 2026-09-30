@@ -18,18 +18,32 @@ import (
 
 // Timestamp fields have no bson tags, so the driver stores them lowercased.
 const (
-	updatedAtField = "updatedat"
-	deleteAtField  = "deleteat"
+	createdAtField         = "createdat"
+	updatedAtField         = "updatedat"
+	deleteAtField          = "deleteat"
+	arrivalNotifiedAtField = "arrivalnotifiedat"
+	pickupNotifiedAtField  = "pickupnotifiedat"
 )
 
 type MongoDBResidentRepository struct {
 	collection client.MongoClientCollectionPort
 }
 
-func NewMongoDBResidentRepository(client client.MongoClientCollectionPort) interfaces.ResidentRepositoryPort {
-	_ = client.EnsureUniqueIndex(map[string]interface{}{"resident_id": 1})
+func NewMongoDBResidentRepository(ctx context.Context, client client.MongoClientCollectionPort) (interfaces.ResidentRepositoryPort, error) {
+	if err := client.EnsureIndexes(ctx, residentIndexes()); err != nil {
+		return nil, fmt.Errorf("ensure residents indexes: %w", err)
+	}
 	return &MongoDBResidentRepository{
 		collection: client,
+	}, nil
+}
+
+func residentIndexes() []mongo.IndexModel {
+	return []mongo.IndexModel{
+		{Keys: bson.D{{Key: "resident_id", Value: 1}}, Options: options.Index().SetUnique(true)},
+		// FindByApartment / FindByPhone always filter out soft-deleted residents.
+		{Keys: bson.D{{Key: "apartment", Value: 1}, {Key: deleteAtField, Value: 1}}},
+		{Keys: bson.D{{Key: "phone", Value: 1}, {Key: deleteAtField, Value: 1}}},
 	}
 }
 

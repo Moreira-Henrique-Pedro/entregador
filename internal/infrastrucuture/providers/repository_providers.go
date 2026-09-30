@@ -35,13 +35,27 @@ func newRepositoryProviders(env *config.Environment) (*repositoryProviders, erro
 
 	database := client.Database(env.MongoDB.Database)
 
+	residentRepository, err := repositories.NewMongoDBResidentRepository(
+		ctx,
+		mongodb.NewMongoCollectionClient(database.Collection(residentsCollectionName)),
+	)
+	if err != nil {
+		_ = client.Disconnect(context.Background())
+		return nil, err
+	}
+
+	deliveryRepository, err := repositories.NewMongoDBDeliveryRepository(
+		ctx,
+		mongodb.NewMongoCollectionClient(database.Collection(deliveriesCollectionName)),
+	)
+	if err != nil {
+		_ = client.Disconnect(context.Background())
+		return nil, err
+	}
+
 	return &repositoryProviders{
-		mongoClient: client,
-		residentRepository: repositories.NewMongoDBResidentRepository(
-			mongodb.NewMongoCollectionClient(database.Collection(residentsCollectionName)),
-		),
-		deliveryRepository: repositories.NewMongoDBDeliveryRepository(
-			mongodb.NewMongoCollectionClient(database.Collection(deliveriesCollectionName)),
-		),
+		mongoClient:        client,
+		residentRepository: residentRepository,
+		deliveryRepository: deliveryRepository,
 	}, nil
 }

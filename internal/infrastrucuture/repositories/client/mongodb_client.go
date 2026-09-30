@@ -36,11 +36,7 @@ func (m *MongoCollectionClient) DeleteOne(ctx context.Context, filter interface{
 	return m.collection.DeleteOne(ctx, filter, opts...)
 }
 
-func (m *MongoCollectionClient) EnsureUniqueIndex(keys interface{}) error {
-	indexModel := mongo.IndexModel{
-		Keys:    keys,
-		Options: options.Index().SetUnique(true),
-	}
-	_, err := m.collection.Indexes().CreateOne(context.Background(), indexModel)
+func (m *MongoCollectionClient) EnsureIndexes(ctx context.Context, indexes []mongo.IndexModel) error {
+	_, err := m.collection.Indexes().CreateMany(ctx, indexes)
 	return err
 }

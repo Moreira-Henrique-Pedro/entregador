@@ -7,82 +7,171 @@ import (
 
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/application/commands"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/notifier"
 )
 
-func TestProcessCreateDelivery_ResolvesRecipient(t *testing.T) {
-	ana := &entities.Resident{ResidentID: "ana", Apartment: "101", Type: entities.ResidentTypeResident}
+const internalTopic = "delivery-internal.commands"
+
+func TestProcessCreateDelivery(t *testing.T) {
+	failure := errors.New("mongo down")
+	otherID := entities.OtherResidentID("101")
 
 	tests := []struct {
-		name          string
-		residentID    string
-		wantResident  string
-		wantEnsuredOK bool
+		name           string
+		command        commands.ProcessCreateDeliveryCommand
+		findErr        error
+		ensureOtherErr error
+		insertErr      error
+		publishErr     error
+		wantErr        error
+		wantResident   string
+		wantEnsured    []string
+		wantPublished  bool
 	}{
-		{name: "resident of the apartment", residentID: "ana", wantResident: "ana"},
-		{name: "no resident informed goes to other", residentID: "", wantResident: entities.OtherResidentID("101"), wantEnsuredOK: true},
-		{name: "unknown resident goes to other", residentID: "ghost", wantResident: entities.OtherResidentID("101"), wantEnsuredOK: true},
-		{name: "resident from another apartment goes to other", residentID: "bob", wantResident: entities.OtherResidentID("101"), wantEnsuredOK: true},
+		{
+			name:          "resident of the apartment receives the delivery",
+			command:       commands.ProcessCreateDeliveryCommand{CommandID: "d1", Apartment: "101", ResidentID: "ana", PackageType: "caixa", Urgency: "alta"},
+			wantResident:  "ana",
+			wantPublished: true,
+		},
+		{
+			name:          "no resident informed goes to the apartment other",
+			command:       commands.ProcessCreateDeliveryCommand{CommandID: "d1", Apartment: "101"},
+			wantResident:  otherID,
+			wantEnsured:   []string{"101"},
+			wantPublished: true,
+		},
+		{
+			name:          "unknown resident goes to the apartment other",
+			command:       commands.ProcessCreateDeliveryCommand{CommandID: "d1", Apartment: "101", ResidentID: "ghost"},
+			wantResident:  otherID,
+			wantEnsured:   []string{"101"},
+			wantPublished: true,
+		},
+		{
+			name:          "resident from another apartment goes to the apartment other",
+			command:       commands.ProcessCreateDeliveryCommand{CommandID: "d1", Apartment: "101", ResidentID: "bob"},
+			wantResident:  otherID,
+			wantEnsured:   []string{"101"},
+			wantPublished: true,
+		},
+		{
+			name:    "command without apartment is discarded",
+			command: commands.ProcessCreateDeliveryCommand{CommandID: "d1", ResidentID: "ana"},
+		},
+		{
+			name:    "resident lookup error is returned",
+			command: commands.ProcessCreateDeliveryCommand{CommandID: "d1", Apartment: "101", ResidentID: "ana"},
+			findErr: failure,
+			wantErr: failure,
+		},
+		{
+			name:           "ensure other error is returned",
+			command:        commands.ProcessCreateDeliveryCommand{CommandID: "d1", Apartment: "101"},
+			ensureOtherErr: failure,
+			wantErr:        failure,
+		},
+		{
+			name:      "insert error is returned",
+			command:   commands.ProcessCreateDeliveryCommand{CommandID: "d1", Apartment: "101", ResidentID: "ana"},
+			insertErr: failure,
+			wantErr:   failure,
+		},
+		{
+			name:         "notify publish error is returned so the command is retried",
+			command:      commands.ProcessCreateDeliveryCommand{CommandID: "d1", Apartment: "101", ResidentID: "ana"},
+			publishErr:   failure,
+			wantErr:      failure,
+			wantResident: "ana",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			bob := &entities.Resident{ResidentID: "bob", Apartment: "202", Type: entities.ResidentTypeResident}
-			residents := newFakeResidentRepository(ana, bob)
-			deliveries := &fakeDeliveryRepository{}
-			writer := NewProcessCreateDelivery(deliveries, residents)
+			residents := newFakeResidentRepository(
+				&entities.Resident{ResidentID: "ana", Apartment: "101", Type: entities.ResidentTypeResident},
+				&entities.Resident{ResidentID: "bob", Apartment: "202", Type: entities.ResidentTypeResident},
+			)
+			residents.findErr = tt.findErr
+			residents.ensureOtherErr = tt.ensureOtherErr
+			deliveries := newFakeDeliveryRepository()
+			deliveries.insertErr = tt.insertErr
+			publisher := &fakePublisher{err: tt.publishErr}
 
-			err := writer.Handle(context.Background(), &commands.ProcessCreateDeliveryCommand{
-				CommandID:  "cmd-1",
-				Apartment:  "101",
-				ResidentID: tt.residentID,
-			})
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			err := NewProcessCreateDelivery(deliveries, residents, publisher, internalTopic).Handle(context.Background(), &tt.command)
+
+			if !errors.Is(err, tt.wantErr) || (tt.wantErr == nil && err != nil) {
+				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+			if !equalStrings(residents.ensuredOthers, tt.wantEnsured) {
+				t.Errorf("ensured others = %v, want %v", residents.ensuredOthers, tt.wantEnsured)
 			}
 
-			if len(deliveries.inserted) != 1 {
-				t.Fatalf("inserted %d deliveries, want 1", len(deliveries.inserted))
+			if tt.wantResident == "" {
+				if len(deliveries.inserted) != 0 {
+					t.Errorf("inserted = %v, want none", deliveries.inserted)
+				}
+			} else {
+				if len(deliveries.inserted) != 1 {
+					t.Fatalf("inserted %d deliveries, want 1", len(deliveries.inserted))
+				}
+				want := entities.Delivery{
+					ID:          tt.command.CommandID,
+					DeliveryID:  tt.command.CommandID,
+					Apartment:   tt.command.Apartment,
+					ResidentID:  tt.wantResident,
+					PackageType: tt.command.PackageType,
+					Urgency:     tt.command.Urgency,
+					Status:      entities.DeliveryStatusPending,
+				}
+				if *deliveries.inserted[0] != want {
+					t.Errorf("inserted = %+v, want %+v", *deliveries.inserted[0], want)
+				}
 			}
-			delivery := deliveries.inserted[0]
-			if delivery.ResidentID != tt.wantResident {
-				t.Errorf("resident = %q, want %q", delivery.ResidentID, tt.wantResident)
+
+			if got := len(publisher.messages) == 1; got != tt.wantPublished {
+				t.Fatalf("published = %d messages, want published %v", len(publisher.messages), tt.wantPublished)
 			}
-			if delivery.Status != entities.DeliveryStatusPending {
-				t.Errorf("status = %q, want pending", delivery.Status)
-			}
-			if delivery.DeliveryID != "cmd-1" || delivery.ID != "cmd-1" {
-				t.Errorf("ids = %q/%q, want cmd-1", delivery.ID, delivery.DeliveryID)
-			}
-			if tt.wantEnsuredOK != (len(residents.ensuredOthers) == 1 && residents.ensuredOthers[0] == "101") {
-				t.Errorf("ensured others = %v", residents.ensuredOthers)
+			if tt.wantPublished {
+				assertNotifyCommand(t, publisher, "d1", notifier.NotificationTypeDeliveryArrived)
 			}
 		})
 	}
 }
 
-func TestProcessCreateDelivery_DiscardsWithoutApartment(t *testing.T) {
-	deliveries := &fakeDeliveryRepository{}
-	writer := NewProcessCreateDelivery(deliveries, newFakeResidentRepository())
+func TestProcessCreateDelivery_RetryPublishesSameNotifyCommand(t *testing.T) {
+	publisher := &fakePublisher{}
+	writer := NewProcessCreateDelivery(newFakeDeliveryRepository(), newFakeResidentRepository(), publisher, internalTopic)
+	command := &commands.ProcessCreateDeliveryCommand{CommandID: "d1", Apartment: "101"}
 
-	if err := writer.Handle(context.Background(), &commands.ProcessCreateDeliveryCommand{CommandID: "cmd-1"}); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	for i := 0; i < 2; i++ {
+		if err := writer.Handle(context.Background(), command); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 	}
-	if len(deliveries.inserted) != 0 {
-		t.Errorf("inserted %d deliveries, want 0", len(deliveries.inserted))
+
+	first := publisher.messages[0].Payload.Data.(*commands.ProcessNotifyDeliveryCommand)
+	second := publisher.messages[1].Payload.Data.(*commands.ProcessNotifyDeliveryCommand)
+	if first.CommandID != second.CommandID {
+		t.Errorf("command ids = %q and %q, want the same", first.CommandID, second.CommandID)
 	}
 }
 
-func TestProcessCreateDelivery_FailsOnRepositoryError(t *testing.T) {
-	residents := newFakeResidentRepository()
-	residents.findErr = errors.New("mongo down")
-	deliveries := &fakeDeliveryRepository{}
-	writer := NewProcessCreateDelivery(deliveries, residents)
+func assertNotifyCommand(t *testing.T, publisher *fakePublisher, deliveryID string, notificationType notifier.NotificationType) {
+	t.Helper()
 
-	err := writer.Handle(context.Background(), &commands.ProcessCreateDeliveryCommand{CommandID: "cmd-1", Apartment: "101", ResidentID: "ana"})
-	if err == nil {
-		t.Fatal("expected error so the message is retried")
+	if publisher.topics[0] != internalTopic {
+		t.Errorf("topic = %q, want %q", publisher.topics[0], internalTopic)
 	}
-	if len(deliveries.inserted) != 0 {
-		t.Errorf("inserted %d deliveries, want 0", len(deliveries.inserted))
+	message := publisher.messages[0]
+	if message.Headers.EventType != commands.ProcessNotifyDeliveryCommandType || message.Headers.Key != deliveryID {
+		t.Errorf("headers = %+v, want %s keyed by %s", message.Headers, commands.ProcessNotifyDeliveryCommandType, deliveryID)
+	}
+	command, ok := message.Payload.Data.(*commands.ProcessNotifyDeliveryCommand)
+	if !ok {
+		t.Fatalf("payload = %T, want *commands.ProcessNotifyDeliveryCommand", message.Payload.Data)
+	}
+	if command.DeliveryID != deliveryID || command.NotificationType != notificationType || command.CommandID == "" {
+		t.Errorf("command = %+v, want delivery %s and type %s", command, deliveryID, notificationType)
 	}
 }

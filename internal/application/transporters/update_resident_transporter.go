@@ -8,7 +8,6 @@ import (
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/application/events"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/pubsub"
 	"github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
-	"github.com/google/uuid"
 )
 
 type UpdateResidentTransporter struct {
@@ -34,7 +33,7 @@ func (t *UpdateResidentTransporter) Handle(ctx context.Context, event *events.Up
 
 	logger.Info("Publishing UpdateResident event to topic %s", t.internalTopic)
 
-	command := t.buildInternalCommand(event)
+	command := t.buildInternalCommand(ctx, event)
 
 	if err := t.publishCommand(ctx, command); err != nil {
 		return fmt.Errorf("failed to publish internal command ProcessUpdateResident: commandID=%s: %w", command.CommandID, err)
@@ -43,9 +42,9 @@ func (t *UpdateResidentTransporter) Handle(ctx context.Context, event *events.Up
 	return nil
 }
 
-func (t *UpdateResidentTransporter) buildInternalCommand(event *events.UpdateResident) *commands.ProcessUpdateResidentCommand {
+func (t *UpdateResidentTransporter) buildInternalCommand(ctx context.Context, event *events.UpdateResident) *commands.ProcessUpdateResidentCommand {
 	return &commands.ProcessUpdateResidentCommand{
-		CommandID:  uuid.New().String(),
+		CommandID:  newCommandID(ctx),
 		ResidentID: event.ResidentID,
 		Name:       event.Name,
 		Apartment:  event.Apartment,

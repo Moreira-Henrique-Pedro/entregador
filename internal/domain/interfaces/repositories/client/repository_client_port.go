@@ -13,5 +13,5 @@ type MongoClientCollectionPort interface {
 	Find(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error)
 	UpdateOne(ctx context.Context, filter interface{}, update interface{}, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error)
 	DeleteOne(ctx context.Context, filter interface{}, opts ...*options.DeleteOptions) (*mongo.DeleteResult, error)
-	EnsureUniqueIndex(keys interface{}) error
+	EnsureIndexes(ctx context.Context, indexes []mongo.IndexModel) error
 }

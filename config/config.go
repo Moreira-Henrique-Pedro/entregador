@@ -33,6 +33,18 @@ type Environment struct {
 	HTTP struct {
 		Port string `env:"HTTP_PORT,default=8081"`
 	}
+	Notifier struct {
+		Provider           string `env:"NOTIFIER_PROVIDER,default=log"`
+		DefaultCountryCode string `env:"NOTIFIER_DEFAULT_COUNTRY_CODE,default=55"`
+	}
+	Twilio struct {
+		AccountSID                 string `env:"TWILIO_ACCOUNT_SID"`
+		AuthToken                  string `env:"TWILIO_AUTH_TOKEN"`
+		WhatsAppFrom               string `env:"TWILIO_WHATSAPP_FROM"`
+		ContentSIDDeliveryArrived  string `env:"TWILIO_CONTENT_SID_DELIVERY_ARRIVED"`
+		ContentSIDDeliveryPickedUp string `env:"TWILIO_CONTENT_SID_DELIVERY_PICKED_UP"`
+		BaseURL                    string `env:"TWILIO_BASE_URL"`
+	}
 	MongoDB struct {
 		URI      string `env:"MONGODB_URI"`
 		Database string `env:"MONGODB_DATABASE"`
