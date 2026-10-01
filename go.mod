@@ -3,6 +3,7 @@ module github.com/Moreira-Henrique-Pedro/entregador
 go 1.25.0
 
 require (
+	github.com/IBM/sarama v1.43.3
 	github.com/ThreeDotsLabs/watermill v1.5.2
 	github.com/ThreeDotsLabs/watermill-kafka/v3 v3.1.2
 	github.com/go-playground/validator/v10 v10.30.3
@@ -14,7 +15,6 @@ require (
 )
 
 require (
-	github.com/IBM/sarama v1.43.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dnwe/otelsarama v0.0.0-20240308230250-9388d9d40bc0 // indirect
 	github.com/eapache/go-resiliency v1.7.0 // indirect

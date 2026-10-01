@@ -10,6 +10,7 @@ import (
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/notifier"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/pubsub"
 	interfaces "github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories"
+	pkgEvents "github.com/Moreira-Henrique-Pedro/entregador/pkg/events"
 	"github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
 )
 
@@ -36,11 +37,21 @@ func NewProcessCreateDelivery(
 
 func (w *ProcessCreateDelivery) Handle(ctx context.Context, command *commands.ProcessCreateDeliveryCommand) error {
 	logger := logger.GetLoggerFromContext(ctx)
-	logger.Info("Processing ProcessCreateDelivery command: commandID=%s", command.CommandID)
+	logger.Info("Processing ProcessCreateDelivery command", "command_id", command.CommandID)
 
 	if command.Apartment == "" {
-		logger.Warn("Discarding ProcessCreateDelivery command without apartment: commandID=%s", command.CommandID)
+		logger.Warn("Discarding ProcessCreateDelivery command without apartment", "command_id", command.CommandID)
 		return nil
+	}
+
+	hasResident, err := w.apartmentHasResident(ctx, command.Apartment)
+	if err != nil {
+		return fmt.Errorf("failed to find apartment residents: apartment=%s: %w", command.Apartment, err)
+	}
+	if !hasResident {
+		logger.Warn("Rejecting delivery for apartment without residents", "command_id", command.CommandID, "apartment", command.Apartment)
+		// Retrying will not register a resident, so the command goes straight to the DLQ.
+		return pkgEvents.Permanent(fmt.Errorf("apartment %s: %w", command.Apartment, entities.ErrNoResidentInApartment))
 	}
 
 	residentID, err := w.resolveRecipient(ctx, command)
@@ -53,7 +64,7 @@ func (w *ProcessCreateDelivery) Handle(ctx context.Context, command *commands.Pr
 		return fmt.Errorf("failed to insert delivery: deliveryID=%s: %w", delivery.DeliveryID, err)
 	}
 
-	logger.Info("Delivery created: DeliveryID=%s, Apartment=%s, ResidentID=%s", delivery.DeliveryID, delivery.Apartment, delivery.ResidentID)
+	logger.Info("Delivery created", "delivery_id", delivery.DeliveryID, "apartment", delivery.Apartment, "resident_id", delivery.ResidentID)
 
 	// On failure the command is retried: the insert is deduplicated by id and the
 	// notification is published again, so the resident is still notified.
@@ -62,6 +73,21 @@ func (w *ProcessCreateDelivery) Handle(ctx context.Context, command *commands.Pr
 	}
 
 	return nil
+}
+
+// apartmentHasResident reports whether the apartment has a registered resident
+// besides its "other" resident.
+func (w *ProcessCreateDelivery) apartmentHasResident(ctx context.Context, apartment string) (bool, error) {
+	residents, err := w.residentRepository.FindByApartment(ctx, apartment)
+	if err != nil {
+		return false, err
+	}
+	for _, resident := range residents {
+		if !resident.IsOther() {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // resolveRecipient returns the informed resident when it lives in the apartment,
@@ -75,9 +101,9 @@ func (w *ProcessCreateDelivery) resolveRecipient(ctx context.Context, command *c
 		case err == nil && resident.Apartment == command.Apartment:
 			return resident.ResidentID, nil
 		case err == nil:
-			logger.Warn("Resident does not live in the delivery apartment, using other: ResidentID=%s, Apartment=%s", command.ResidentID, command.Apartment)
+			logger.Warn("Resident does not live in the delivery apartment, using other", "resident_id", command.ResidentID, "apartment", command.Apartment)
 		case errors.Is(err, entities.ErrEntityNotFound):
-			logger.Warn("Resident not found, using other: ResidentID=%s, Apartment=%s", command.ResidentID, command.Apartment)
+			logger.Warn("Resident not found, using other", "resident_id", command.ResidentID, "apartment", command.Apartment)
 		default:
 			return "", err
 		}

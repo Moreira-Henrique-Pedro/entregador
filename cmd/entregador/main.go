@@ -40,7 +40,7 @@ func processMessage(ctx context.Context, app *Application, kafkaMessage *watermi
 
 	pubsubMessage, err := appWatermill.ConvertWatermillToPubsub(kafkaMessage, nil)
 	if err != nil {
-		return permanent(fmt.Errorf("convert kafka message: %w", err))
+		return pkgEvents.Permanent(fmt.Errorf("convert kafka message: %w", err))
 	}
 
 	messageLogger := app.Logger.With(
@@ -258,7 +258,7 @@ func handleMessage(ctx context.Context, app *Application, msg *watermillMessage.
 	app.Logger.Error("Failed to process Kafka message, sending to DLQ",
 		"error", err.Error(),
 		"message_uuid", msg.UUID,
-		"permanent", isPermanent(err),
+		"permanent", pkgEvents.IsPermanent(err),
 		"dlq_topic", app.Configs.Envs.Pubsub.DLQTopic,
 	)
 
@@ -275,12 +275,7 @@ func handleMessage(ctx context.Context, app *Application, msg *watermillMessage.
 }
 
 func publishToDLQ(ctx context.Context, app *Application, msg *watermillMessage.Message, processErr error) error {
-	var convertErr error
-	if isPermanent(processErr) {
-		convertErr, processErr = processErr, nil
-	}
-
-	dlqMessage := appWatermill.BuildRawDLQMessage(msg, processErr, convertErr)
+	dlqMessage := appWatermill.BuildRawDLQMessage(msg, processErr)
 	originalTopic := app.Configs.SubscriberConfigs.Topic
 	dlqMessage.Headers.OriginalTopic = &originalTopic
 

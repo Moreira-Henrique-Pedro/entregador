@@ -13,15 +13,17 @@ type fakeResidentRepository struct {
 
 	insertErr        error
 	ensureOtherErr   error
+	ensurePrimaryErr error
 	updateErr        error
 	deleteErr        error
 	findErr          error
 	findApartmentErr error
 
-	inserted      []*entities.Resident
-	ensuredOthers []string
-	updated       []*entities.Resident
-	deletedIDs    []string
+	inserted         []*entities.Resident
+	ensuredOthers    []string
+	ensuredPrimaries []string
+	updated          []*entities.Resident
+	deletedIDs       []string
 }
 
 func newFakeResidentRepository(residents ...*entities.Resident) *fakeResidentRepository {
@@ -37,6 +39,10 @@ func (f *fakeResidentRepository) Insert(_ context.Context, resident *entities.Re
 		return f.insertErr
 	}
 	f.inserted = append(f.inserted, resident)
+	if _, exists := f.residents[resident.ResidentID]; !exists {
+		stored := *resident
+		f.residents[resident.ResidentID] = &stored
+	}
 	return nil
 }
 
@@ -48,11 +54,53 @@ func (f *fakeResidentRepository) EnsureOtherResident(_ context.Context, apartmen
 	return nil
 }
 
+// EnsurePrimaryResident mimics the repository: when the apartment has no primary,
+// the oldest non-other resident (by CreatedAt, then ResidentID) becomes primary.
+func (f *fakeResidentRepository) EnsurePrimaryResident(_ context.Context, apartment string) error {
+	if f.ensurePrimaryErr != nil {
+		return f.ensurePrimaryErr
+	}
+	f.ensuredPrimaries = append(f.ensuredPrimaries, apartment)
+
+	var candidate *entities.Resident
+	for _, resident := range f.residents {
+		if resident.Apartment != apartment || resident.IsOther() {
+			continue
+		}
+		if resident.IsPrimary() {
+			return nil
+		}
+		if candidate == nil || resident.CreatedAt.Before(candidate.CreatedAt) ||
+			(resident.CreatedAt.Equal(candidate.CreatedAt) && resident.ResidentID < candidate.ResidentID) {
+			candidate = resident
+		}
+	}
+	if candidate != nil {
+		candidate.Type = entities.ResidentTypePrimary
+	}
+	return nil
+}
+
 func (f *fakeResidentRepository) Update(_ context.Context, resident *entities.Resident) error {
 	if f.updateErr != nil {
 		return f.updateErr
 	}
 	f.updated = append(f.updated, resident)
+	// Like the repository, only the informed fields change.
+	if stored, ok := f.residents[resident.ResidentID]; ok {
+		if resident.Name != "" {
+			stored.Name = resident.Name
+		}
+		if resident.Apartment != "" {
+			stored.Apartment = resident.Apartment
+		}
+		if resident.Phone != "" {
+			stored.Phone = resident.Phone
+		}
+		if resident.Type != "" {
+			stored.Type = resident.Type
+		}
+	}
 	return nil
 }
 
@@ -61,6 +109,7 @@ func (f *fakeResidentRepository) DeleteByResidentID(_ context.Context, residentI
 		return f.deleteErr
 	}
 	f.deletedIDs = append(f.deletedIDs, residentID)
+	delete(f.residents, residentID)
 	return nil
 }
 

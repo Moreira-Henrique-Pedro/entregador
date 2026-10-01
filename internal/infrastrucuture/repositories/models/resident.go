@@ -13,15 +13,24 @@ type Resident struct {
 	Name       string `bson:"name"`
 	Phone      string `bson:"phone"`
 	Type       string `bson:"type"`
+	Status     string `bson:"status"`
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 	DeleteAt   time.Time
 }
 
+// legacyResidentType was stored before residents were split into primary and secondary.
+const legacyResidentType = "resident"
+
 func ResidentFromEntity(resident *entities.Resident) *Resident {
 	residentType := resident.Type
 	if residentType == "" {
-		residentType = entities.ResidentTypeResident
+		residentType = entities.ResidentTypeSecondary
+	}
+
+	status := resident.Status
+	if status == "" {
+		status = entities.ResidentStatusCreated
 	}
 
 	return &Resident{
@@ -31,6 +40,7 @@ func ResidentFromEntity(resident *entities.Resident) *Resident {
 		Name:       resident.Name,
 		Phone:      resident.Phone,
 		Type:       string(residentType),
+		Status:     string(status),
 		CreatedAt:  resident.CreatedAt,
 		UpdatedAt:  resident.UpdatedAt,
 		DeleteAt:   resident.DeleteAt,
@@ -38,10 +48,20 @@ func ResidentFromEntity(resident *entities.Resident) *Resident {
 }
 
 func (r *Resident) ToEntity() *entities.Resident {
-	// Residents stored before the type field existed are regular residents.
+	// Residents stored without a type, or before primary/secondary existed, are
+	// secondary until EnsurePrimaryResident promotes one of them.
 	residentType := entities.ResidentType(r.Type)
-	if residentType == "" {
-		residentType = entities.ResidentTypeResident
+	if residentType == "" || r.Type == legacyResidentType {
+		residentType = entities.ResidentTypeSecondary
+	}
+
+	// Residents stored before the status field existed get it from deleteat.
+	status := entities.ResidentStatus(r.Status)
+	if status == "" {
+		status = entities.ResidentStatusCreated
+		if !r.DeleteAt.IsZero() {
+			status = entities.ResidentStatusDeleted
+		}
 	}
 
 	return &entities.Resident{
@@ -51,6 +71,7 @@ func (r *Resident) ToEntity() *entities.Resident {
 		Name:       r.Name,
 		Phone:      r.Phone,
 		Type:       residentType,
+		Status:     status,
 		CreatedAt:  r.CreatedAt,
 		UpdatedAt:  r.UpdatedAt,
 		DeleteAt:   r.DeleteAt,

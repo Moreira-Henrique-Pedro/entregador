@@ -19,18 +19,21 @@ type fakeCollection struct {
 	insertErr   error
 	gotInserted []interface{}
 
-	findOneDoc    interface{}
-	findOneErr    error
-	gotFindOne    []interface{}
-	findDocs      []interface{}
-	findErr       error
-	gotFind       []interface{}
-	gotFindOpts   []*options.FindOptions
-	updateResult  *mongo.UpdateResult
-	updateErr     error
-	gotUpdFilter  []interface{}
-	gotUpdate     []interface{}
-	gotUpdateOpts []*options.UpdateOptions
+	findOneDoc interface{}
+	findOneErr error
+	// findOneQueue, when not empty, answers successive FindOne calls in order.
+	findOneQueue   []findOneResult
+	gotFindOne     []interface{}
+	gotFindOneOpts []*options.FindOneOptions
+	findDocs       []interface{}
+	findErr        error
+	gotFind        []interface{}
+	gotFindOpts    []*options.FindOptions
+	updateResult   *mongo.UpdateResult
+	updateErr      error
+	gotUpdFilter   []interface{}
+	gotUpdate      []interface{}
+	gotUpdateOpts  []*options.UpdateOptions
 }
 
 func (f *fakeCollection) InsertOne(_ context.Context, document interface{}, _ ...*options.InsertOneOptions) (*mongo.InsertOneResult, error) {
@@ -41,8 +44,23 @@ func (f *fakeCollection) InsertOne(_ context.Context, document interface{}, _ ..
 	return &mongo.InsertOneResult{}, nil
 }
 
-func (f *fakeCollection) FindOne(_ context.Context, filter interface{}, _ ...*options.FindOneOptions) *mongo.SingleResult {
+type findOneResult struct {
+	doc interface{}
+	err error
+}
+
+func (f *fakeCollection) FindOne(_ context.Context, filter interface{}, opts ...*options.FindOneOptions) *mongo.SingleResult {
 	f.gotFindOne = append(f.gotFindOne, filter)
+	f.gotFindOneOpts = append(f.gotFindOneOpts, opts...)
+	if len(f.findOneQueue) > 0 {
+		next := f.findOneQueue[0]
+		f.findOneQueue = f.findOneQueue[1:]
+		doc := next.doc
+		if doc == nil {
+			doc = bson.D{}
+		}
+		return mongo.NewSingleResultFromDocument(doc, next.err, nil)
+	}
 	doc := f.findOneDoc
 	if doc == nil {
 		doc = bson.D{}

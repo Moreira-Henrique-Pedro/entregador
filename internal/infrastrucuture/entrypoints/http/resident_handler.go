@@ -32,6 +32,7 @@ type residentResponse struct {
 	Apartment  string    `json:"apartment"`
 	Phone      string    `json:"phone"`
 	Type       string    `json:"type"`
+	Status     string    `json:"status"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
@@ -75,6 +76,7 @@ func (h *ResidentHandler) ListResidents(w http.ResponseWriter, r *http.Request) 
 			Apartment:  resident.Apartment,
 			Phone:      resident.Phone,
 			Type:       string(resident.Type),
+			Status:     string(resident.Status),
 			CreatedAt:  resident.CreatedAt,
 			UpdatedAt:  resident.UpdatedAt,
 		})

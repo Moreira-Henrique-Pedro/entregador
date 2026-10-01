@@ -23,7 +23,10 @@ func (f *fakeReader) Handle(_ context.Context, value string) ([]*entities.Reside
 }
 
 func TestListResidents(t *testing.T) {
-	resident := &entities.Resident{ResidentID: "r1", Name: "Ana", Apartment: "101", Phone: "11999999999"}
+	resident := &entities.Resident{
+		ResidentID: "r1", Name: "Ana", Apartment: "101", Phone: "11999999999",
+		Type: entities.ResidentTypePrimary, Status: entities.ResidentStatusCreated,
+	}
 
 	tests := []struct {
 		name          string
@@ -69,6 +72,9 @@ func TestListResidents(t *testing.T) {
 			}
 			if len(body) != tt.wantCount {
 				t.Errorf("got %d residents, want %d", len(body), tt.wantCount)
+			}
+			if tt.wantCount > 0 && (body[0].Type != "resident-primary" || body[0].Status != "created") {
+				t.Errorf("type/status = %q/%q, want resident-primary/created", body[0].Type, body[0].Status)
 			}
 		})
 	}

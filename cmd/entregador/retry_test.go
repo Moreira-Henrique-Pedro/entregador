@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	pkgEvents "github.com/Moreira-Henrique-Pedro/entregador/pkg/events"
 )
 
 func TestRetryPolicy(t *testing.T) {
@@ -47,9 +49,9 @@ func TestRetryPolicy(t *testing.T) {
 		calls := 0
 		err := policy.run(context.Background(), func() error {
 			calls++
-			return permanent(failure)
+			return pkgEvents.Permanent(failure)
 		}, nil)
-		if !isPermanent(err) || !errors.Is(err, failure) || calls != 1 {
+		if !pkgEvents.IsPermanent(err) || !errors.Is(err, failure) || calls != 1 {
 			t.Fatalf("err = %v, calls = %d, want permanent boom and 1", err, calls)
 		}
 	})

@@ -3,8 +3,11 @@ package entities
 type ResidentType string
 
 const (
-	// ResidentTypeResident is a registered resident of the apartment.
-	ResidentTypeResident ResidentType = "resident"
+	// ResidentTypePrimary is the apartment's main resident: the first one registered.
+	// Deliveries addressed to the "other" resident are notified to it.
+	ResidentTypePrimary ResidentType = "resident-primary"
+	// ResidentTypeSecondary is any other registered resident of the apartment.
+	ResidentTypeSecondary ResidentType = "resident-secondary"
 	// ResidentTypeOther is the placeholder every apartment has, used when the
 	// recipient is not one of its residents or has not been registered yet.
 	ResidentTypeOther ResidentType = "other"
@@ -28,5 +31,6 @@ func NewOtherResident(apartment string) *Resident {
 		Apartment:  apartment,
 		Name:       otherResidentName,
 		Type:       ResidentTypeOther,
+		Status:     ResidentStatusCreated,
 	}
 }

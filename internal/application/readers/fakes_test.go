@@ -18,6 +18,8 @@ func (f *fakeResidentRepository) Insert(context.Context, *entities.Resident) err
 
 func (f *fakeResidentRepository) EnsureOtherResident(context.Context, string) error { return nil }
 
+func (f *fakeResidentRepository) EnsurePrimaryResident(context.Context, string) error { return nil }
+
 func (f *fakeResidentRepository) Update(context.Context, *entities.Resident) error { return nil }
 
 func (f *fakeResidentRepository) DeleteByResidentID(context.Context, string) error { return nil }

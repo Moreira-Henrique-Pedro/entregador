@@ -22,44 +22,58 @@ func NewProcessUpdateResident(residentRepository interfaces.ResidentRepositoryPo
 }
 
 func (w *ProcessUpdateResident) Handle(ctx context.Context, command *commands.ProcessUpdateResidentCommand) error {
-	logger := logger.GetLoggerFromContext(ctx)
-	logger.Info("Processing ProcessUpdateResident command: commandID=%s", command.CommandID)
+	logger := logger.GetLoggerFromContext(ctx).With("resident_id", command.ResidentID)
+	logger.Info("Processing ProcessUpdateResident command", "command_id", command.CommandID)
 
 	if command.ResidentID == "" {
-		logger.Warn("Discarding ProcessUpdateResident command without resident_id: commandID=%s", command.CommandID)
+		logger.Warn("Discarding ProcessUpdateResident command without resident_id", "command_id", command.CommandID)
 		return nil
 	}
 
 	current, err := w.residentRepository.FindByResidentID(ctx, command.ResidentID)
 	if errors.Is(err, entities.ErrEntityNotFound) {
-		logger.Warn("Resident not found for update: ResidentID=%s", command.ResidentID)
+		logger.Warn("Resident not found for update")
 		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("failed to find resident: residentID=%s: %w", command.ResidentID, err)
 	}
 	if current.IsOther() {
-		logger.Warn("Discarding update of other resident: ResidentID=%s", command.ResidentID)
+		logger.Warn("Discarding update of other resident")
 		return nil
 	}
 
+	previousApartment := current.Apartment
+	movingApartment := command.Apartment != "" && command.Apartment != previousApartment
+
 	resident := w.buildResidentEntity(command)
+	// A primary that moves out leaves the old apartment's primary and arrives as
+	// secondary, so the new apartment keeps its current primary.
+	if movingApartment && current.IsPrimary() {
+		resident.Type = entities.ResidentTypeSecondary
+	}
+
 	err = w.residentRepository.Update(ctx, resident)
 	if errors.Is(err, entities.ErrEntityNotFound) {
-		logger.Warn("Resident not found for update: ResidentID=%s", command.ResidentID)
+		logger.Warn("Resident not found for update")
 		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("failed to update resident: residentID=%s: %w", command.ResidentID, err)
 	}
 
-	if command.Apartment != "" && command.Apartment != current.Apartment {
+	if movingApartment {
 		if err := w.residentRepository.EnsureOtherResident(ctx, command.Apartment); err != nil {
 			return fmt.Errorf("failed to ensure other resident: apartment=%s: %w", command.Apartment, err)
 		}
+		for _, apartment := range []string{previousApartment, command.Apartment} {
+			if err := w.residentRepository.EnsurePrimaryResident(ctx, apartment); err != nil {
+				return fmt.Errorf("failed to ensure primary resident: apartment=%s: %w", apartment, err)
+			}
+		}
 	}
 
-	logger.Info("Resident updated: ResidentID=%s", command.ResidentID)
+	logger.Info("Resident updated")
 
 	return nil
 }

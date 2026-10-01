@@ -22,7 +22,7 @@ func NewGetResidentsByPhone(residentRepository interfaces.ResidentRepositoryPort
 
 func (r *GetResidentsByPhone) Handle(ctx context.Context, phone string) ([]*entities.Resident, error) {
 	logger := logger.GetLoggerFromContext(ctx)
-	logger.Info("Getting residents by phone: Phone=%s", phone)
+	logger.Info("Getting residents by phone", "phone", phone)
 
 	if phone == "" {
 		return nil, errors.New("phone is required")

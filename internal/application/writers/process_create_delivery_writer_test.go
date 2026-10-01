@@ -8,6 +8,7 @@ import (
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/application/commands"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/notifier"
+	pkgEvents "github.com/Moreira-Henrique-Pedro/entregador/pkg/events"
 )
 
 const internalTopic = "delivery-internal.commands"
@@ -20,6 +21,7 @@ func TestProcessCreateDelivery(t *testing.T) {
 		name           string
 		command        commands.ProcessCreateDeliveryCommand
 		findErr        error
+		apartmentErr   error
 		ensureOtherErr error
 		insertErr      error
 		publishErr     error
@@ -27,6 +29,7 @@ func TestProcessCreateDelivery(t *testing.T) {
 		wantResident   string
 		wantEnsured    []string
 		wantPublished  bool
+		wantPermanent  bool
 	}{
 		{
 			name:          "resident of the apartment receives the delivery",
@@ -54,6 +57,24 @@ func TestProcessCreateDelivery(t *testing.T) {
 			wantResident:  otherID,
 			wantEnsured:   []string{"101"},
 			wantPublished: true,
+		},
+		{
+			name:          "apartment without residents is rejected without retry",
+			command:       commands.ProcessCreateDeliveryCommand{CommandID: "d1", Apartment: "303"},
+			wantErr:       entities.ErrNoResidentInApartment,
+			wantPermanent: true,
+		},
+		{
+			name:          "apartment with only the other resident is rejected without retry",
+			command:       commands.ProcessCreateDeliveryCommand{CommandID: "d1", Apartment: "404"},
+			wantErr:       entities.ErrNoResidentInApartment,
+			wantPermanent: true,
+		},
+		{
+			name:         "apartment residents lookup error is returned for retry",
+			command:      commands.ProcessCreateDeliveryCommand{CommandID: "d1", Apartment: "101", ResidentID: "ana"},
+			apartmentErr: failure,
+			wantErr:      failure,
 		},
 		{
 			name:    "command without apartment is discarded",
@@ -89,10 +110,12 @@ func TestProcessCreateDelivery(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			residents := newFakeResidentRepository(
-				&entities.Resident{ResidentID: "ana", Apartment: "101", Type: entities.ResidentTypeResident},
-				&entities.Resident{ResidentID: "bob", Apartment: "202", Type: entities.ResidentTypeResident},
+				&entities.Resident{ResidentID: "ana", Apartment: "101", Type: entities.ResidentTypePrimary},
+				&entities.Resident{ResidentID: "bob", Apartment: "202", Type: entities.ResidentTypePrimary},
+				entities.NewOtherResident("404"),
 			)
 			residents.findErr = tt.findErr
+			residents.findApartmentErr = tt.apartmentErr
 			residents.ensureOtherErr = tt.ensureOtherErr
 			deliveries := newFakeDeliveryRepository()
 			deliveries.insertErr = tt.insertErr
@@ -102,6 +125,9 @@ func TestProcessCreateDelivery(t *testing.T) {
 
 			if !errors.Is(err, tt.wantErr) || (tt.wantErr == nil && err != nil) {
 				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+			if got := pkgEvents.IsPermanent(err); got != tt.wantPermanent {
+				t.Errorf("permanent = %v, want %v", got, tt.wantPermanent)
 			}
 			if !equalStrings(residents.ensuredOthers, tt.wantEnsured) {
 				t.Errorf("ensured others = %v, want %v", residents.ensuredOthers, tt.wantEnsured)
@@ -141,7 +167,8 @@ func TestProcessCreateDelivery(t *testing.T) {
 
 func TestProcessCreateDelivery_RetryPublishesSameNotifyCommand(t *testing.T) {
 	publisher := &fakePublisher{}
-	writer := NewProcessCreateDelivery(newFakeDeliveryRepository(), newFakeResidentRepository(), publisher, internalTopic)
+	residents := newFakeResidentRepository(&entities.Resident{ResidentID: "ana", Apartment: "101", Type: entities.ResidentTypePrimary})
+	writer := NewProcessCreateDelivery(newFakeDeliveryRepository(), residents, publisher, internalTopic)
 	command := &commands.ProcessCreateDeliveryCommand{CommandID: "d1", Apartment: "101"}
 
 	for i := 0; i < 2; i++ {

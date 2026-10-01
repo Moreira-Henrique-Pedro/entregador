@@ -6,24 +6,8 @@ import (
 	"time"
 
 	subscriberConfig "github.com/Moreira-Henrique-Pedro/entregador/config/subscriber"
+	pkgEvents "github.com/Moreira-Henrique-Pedro/entregador/pkg/events"
 )
-
-// permanentError marks failures that will not succeed on retry, such as an unparseable payload.
-type permanentError struct {
-	err error
-}
-
-func (e *permanentError) Error() string { return e.err.Error() }
-func (e *permanentError) Unwrap() error { return e.err }
-
-func permanent(err error) error {
-	return &permanentError{err: err}
-}
-
-func isPermanent(err error) bool {
-	var target *permanentError
-	return errors.As(err, &target)
-}
 
 type retryPolicy struct {
 	maxRetries      int
@@ -49,7 +33,7 @@ func (p retryPolicy) run(ctx context.Context, fn func() error, onRetry func(atte
 
 	for attempt := 0; ; attempt++ {
 		err := fn()
-		if err == nil || isPermanent(err) || attempt >= p.maxRetries {
+		if err == nil || pkgEvents.IsPermanent(err) || attempt >= p.maxRetries {
 			return err
 		}
 

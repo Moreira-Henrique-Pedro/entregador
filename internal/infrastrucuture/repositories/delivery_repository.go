@@ -52,7 +52,7 @@ func (r *MongoDBDeliveryRepository) Insert(ctx context.Context, delivery *entiti
 	_, err := r.collection.InsertOne(ctx, model)
 	if mongo.IsDuplicateKeyError(err) {
 		logger := logger.GetLoggerFromContext(ctx)
-		logger.Warn("Duplicate key error while inserting delivery", model.DeliveryID, "error", err)
+		logger.Warn("Duplicate key error while inserting delivery", "delivery_id", model.DeliveryID, "error", err.Error())
 		return nil
 	}
 	return err

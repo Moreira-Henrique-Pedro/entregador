@@ -11,29 +11,36 @@ import (
 func TestResidentFromEntity(t *testing.T) {
 	now := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
 	tests := []struct {
-		name     string
-		resident *entities.Resident
-		wantType string
+		name       string
+		resident   *entities.Resident
+		wantType   string
+		wantStatus string
 	}{
-		{name: "empty type defaults to resident", resident: &entities.Resident{ResidentID: "r1"}, wantType: "resident"},
-		{name: "resident type", resident: &entities.Resident{ResidentID: "r1", Type: entities.ResidentTypeResident}, wantType: "resident"},
+		{name: "empty type defaults to secondary", resident: &entities.Resident{ResidentID: "r1"}, wantType: "resident-secondary"},
+		{name: "deleted status is kept", resident: &entities.Resident{ResidentID: "r1", Status: entities.ResidentStatusDeleted}, wantType: "resident-secondary", wantStatus: "deleted"},
+		{name: "primary type", resident: &entities.Resident{ResidentID: "r1", Type: entities.ResidentTypePrimary}, wantType: "resident-primary"},
+		{name: "secondary type", resident: &entities.Resident{ResidentID: "r1", Type: entities.ResidentTypeSecondary}, wantType: "resident-secondary"},
 		{name: "other type", resident: &entities.Resident{ResidentID: "other-101", Type: entities.ResidentTypeOther}, wantType: "other"},
 		{
 			name: "copies all fields",
 			resident: &entities.Resident{
 				ID: "r1", ResidentID: "r1", Apartment: "101", Name: "Ana", Phone: "5511",
-				Type: entities.ResidentTypeResident, CreatedAt: now, UpdatedAt: now.Add(time.Hour), DeleteAt: now.Add(2 * time.Hour),
+				Type: entities.ResidentTypePrimary, CreatedAt: now, UpdatedAt: now.Add(time.Hour), DeleteAt: now.Add(2 * time.Hour),
 			},
-			wantType: "resident",
+			wantType: "resident-primary",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := ResidentFromEntity(tt.resident)
+			wantStatus := tt.wantStatus
+			if wantStatus == "" {
+				wantStatus = "created"
+			}
 			want := Resident{
 				ID: tt.resident.ID, ResidentID: tt.resident.ResidentID, Apartment: tt.resident.Apartment,
-				Name: tt.resident.Name, Phone: tt.resident.Phone, Type: tt.wantType,
+				Name: tt.resident.Name, Phone: tt.resident.Phone, Type: tt.wantType, Status: wantStatus,
 				CreatedAt: tt.resident.CreatedAt, UpdatedAt: tt.resident.UpdatedAt, DeleteAt: tt.resident.DeleteAt,
 			}
 			if *got != want {
@@ -49,8 +56,10 @@ func TestResidentToEntity(t *testing.T) {
 		model    Resident
 		wantType entities.ResidentType
 	}{
-		{name: "legacy resident without type", model: Resident{ResidentID: "r1"}, wantType: entities.ResidentTypeResident},
-		{name: "resident", model: Resident{ResidentID: "r1", Type: "resident"}, wantType: entities.ResidentTypeResident},
+		{name: "resident without type is secondary", model: Resident{ResidentID: "r1"}, wantType: entities.ResidentTypeSecondary},
+		{name: "legacy resident type is secondary", model: Resident{ResidentID: "r1", Type: "resident"}, wantType: entities.ResidentTypeSecondary},
+		{name: "primary", model: Resident{ResidentID: "r1", Type: "resident-primary"}, wantType: entities.ResidentTypePrimary},
+		{name: "secondary", model: Resident{ResidentID: "r1", Type: "resident-secondary"}, wantType: entities.ResidentTypeSecondary},
 		{name: "other", model: Resident{ResidentID: "other-101", Type: "other"}, wantType: entities.ResidentTypeOther},
 	}
 
@@ -64,6 +73,28 @@ func TestResidentToEntity(t *testing.T) {
 	}
 }
 
+func TestResidentToEntityStatus(t *testing.T) {
+	deletedAt := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
+	tests := []struct {
+		name       string
+		model      Resident
+		wantStatus entities.ResidentStatus
+	}{
+		{name: "created", model: Resident{Status: "created"}, wantStatus: entities.ResidentStatusCreated},
+		{name: "deleted", model: Resident{Status: "deleted", DeleteAt: deletedAt}, wantStatus: entities.ResidentStatusDeleted},
+		{name: "legacy active resident without status is created", model: Resident{}, wantStatus: entities.ResidentStatusCreated},
+		{name: "legacy removed resident without status is deleted", model: Resident{DeleteAt: deletedAt}, wantStatus: entities.ResidentStatusDeleted},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.model.ToEntity().Status; got != tt.wantStatus {
+				t.Errorf("Status = %q, want %q", got, tt.wantStatus)
+			}
+		})
+	}
+}
+
 func TestResidentRoundTrip(t *testing.T) {
 	now := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
 	tests := []struct {
@@ -72,7 +103,7 @@ func TestResidentRoundTrip(t *testing.T) {
 	}{
 		{name: "full resident", resident: entities.Resident{
 			ID: "r1", ResidentID: "r1", Apartment: "101", Name: "Ana", Phone: "5511",
-			Type: entities.ResidentTypeResident, CreatedAt: now, UpdatedAt: now, DeleteAt: now,
+			Type: entities.ResidentTypePrimary, Status: entities.ResidentStatusDeleted, CreatedAt: now, UpdatedAt: now, DeleteAt: now,
 		}},
 		{name: "other resident", resident: *entities.NewOtherResident("101")},
 	}
