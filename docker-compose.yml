@@ -1,8 +1,8 @@
-x-consumer: &consumer
+x-app: &app
   build:
     context: .
     args:
-      APP: entregador
+      APP: api
   env_file:
     - path: .env
       required: false
@@ -67,45 +67,28 @@ services:
         echo "waiting for kafka";
         sleep 2;
       done;
-      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic resident-management.events --partitions 1 --replication-factor 1;
-      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic delivery-management.events --partitions 1 --replication-factor 1;
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic delivery-internal.commands --partitions 1 --replication-factor 1;
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic delivery-subscriber.dlq --partitions 1 --replication-factor 1;
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list;
       '
     restart: "no"
 
-  resident-events-consumer:
-    <<: *consumer
-    image: entregador-resident-events-consumer
-    container_name: entregador-resident-events-consumer
-    command: ["./main", "-config=config/subscriber/deployments/delivery_subscriber_resident_management_events.json"]
-
-  delivery-events-consumer:
-    <<: *consumer
-    image: entregador-delivery-events-consumer
-    container_name: entregador-delivery-events-consumer
-    command: ["./main", "-config=config/subscriber/deployments/delivery_subscriber_delivery_management_events.json"]
-
-  internal-commands-consumer:
-    <<: *consumer
-    image: entregador-internal-commands-consumer
-    container_name: entregador-internal-commands-consumer
-    command: ["./main", "-config=config/subscriber/deployments/delivery_subscriber_internal_commands.json"]
-
-  api:
-    <<: *consumer
+  worker:
+    <<: *app
     build:
       context: .
       args:
-        APP: api
+        APP: worker
+    image: entregador-worker
+    container_name: entregador-worker
+    command: ["./main", "-config=config/subscriber/deployments/delivery_subscriber_internal_commands.json"]
+
+  api:
+    <<: *app
     image: entregador-api
     container_name: entregador-api
     ports:
       - "8081:8081"
-    depends_on:
-      mongodb:
-        condition: service_started
 
 volumes:
   mongo_data:

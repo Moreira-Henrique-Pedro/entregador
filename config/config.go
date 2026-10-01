@@ -52,6 +52,7 @@ type Environment struct {
 	Pubsub struct {
 		DeliveryBrokersHostsRaw string `env:"DELIVERY_BROKER_HOSTS"`
 		DeliveryBrokersHosts    []string
+		CommandsTopic           string `env:"INTERNAL_COMMANDS_TOPIC,default=delivery-internal.commands"`
 		DLQTopic                string `env:"DLQ_TOPIC,default=delivery-subscriber.dlq"`
 		BrokerHosts             []string
 	}

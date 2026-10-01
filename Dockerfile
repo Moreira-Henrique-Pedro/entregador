@@ -12,8 +12,8 @@ RUN go mod download
 # Copiar o código fonte
 COPY . .
 
-# Binário a compilar: entregador (consumer Kafka) ou api (HTTP)
-ARG APP=entregador
+# Binário a compilar: api (HTTP) ou worker (consumer Kafka das notificações)
+ARG APP=api
 
 # Compilar a aplicação
 RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/${APP}
@@ -26,7 +26,7 @@ WORKDIR /root/
 # Copiar o binário compilado
 COPY --from=builder /app/main .
 
-# Configs dos consumers, passadas via -config
+# Config do consumer do worker, passada via -config
 COPY --from=builder /app/config/subscriber/deployments ./config/subscriber/deployments
 
 # Expor a porta que sua aplicação usa

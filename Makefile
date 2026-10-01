@@ -1,21 +1,28 @@
-.PHONY: up app-up api docker-build-api test coverage mocks down linter
+.PHONY: up app-up api worker docker-build-api docker-build-worker test coverage mocks down linter
 
-## Inicializa apenas o docker-compose
+## Sobe infraestrutura + api + worker em primeiro plano
 up:
 	docker compose -f ./docker-compose.yml up --build
 
-## Inicializa toda a aplicação
+## Sobe infraestrutura + api + worker em background
 app-up:
 	docker compose -f ./docker-compose.yml up --build -d
-	./scripts/run/run.application.sh
 
-## Roda a API HTTP de consulta localmente
+## Roda a API HTTP localmente
 api:
 	go run ./cmd/api
+
+## Roda o worker de notificações localmente
+worker:
+	go run ./cmd/worker -config=config/subscriber/deployments/delivery_subscriber_internal_commands.json
 
 ## Gera a imagem Docker da API HTTP
 docker-build-api:
 	docker build --build-arg APP=api -t entregador-api .
+
+## Gera a imagem Docker do worker
+docker-build-worker:
+	docker build --build-arg APP=worker -t entregador-worker .
 
 ## rodar todos os testes unitários
 test:
