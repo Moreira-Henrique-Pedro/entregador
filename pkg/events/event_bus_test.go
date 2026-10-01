@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/pubsub"
+	"github.com/Moreira-Henrique-Pedro/entregador/pkg/pubsub"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

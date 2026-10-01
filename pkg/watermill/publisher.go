@@ -3,8 +3,8 @@ package watermill
 import (
 	"context"
 
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/pubsub"
 	appLogger "github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
+	"github.com/Moreira-Henrique-Pedro/entregador/pkg/pubsub"
 	"github.com/ThreeDotsLabs/watermill-kafka/v3/pkg/kafka"
 	"github.com/ThreeDotsLabs/watermill/message"
 )

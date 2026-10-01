@@ -1,23 +1,84 @@
-x-consumer: &consumer
+# Default (MESSAGING_PROVIDER=pubsub): MongoDB + Pub/Sub emulator + api. Same topology as Cloud Run.
+#   docker compose up --build
+# Kafka (MESSAGING_PROVIDER=kafka in .env): adds Kafka, Kafka UI and the worker.
+#   docker compose --profile kafka up --build
+
+x-app: &app
   build:
     context: .
     args:
-      APP: entregador
+      APP: api
   env_file:
     - path: .env
       required: false
   environment:
-    DELIVERY_BROKER_HOSTS: kafka:9092
+    # Inside the compose network, localhost does not reach the other containers.
     MONGODB_URI: mongodb://mongodb:27017
-  depends_on:
-    kafka-init-topics:
-      condition: service_completed_successfully
-    mongodb:
-      condition: service_started
+    DELIVERY_BROKER_HOSTS: kafka:9092
+    MESSAGING_PROVIDER: ${MESSAGING_PROVIDER:-pubsub}
+    GCP_PROJECT_ID: entregador-local
+    PUBSUB_EMULATOR_HOST: pubsub:8085
+    # The emulator does not sign push requests.
+    PUBSUB_PUSH_VERIFY_TOKEN: "false"
   restart: unless-stopped
 
 services:
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+  pubsub:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command: ["gcloud", "beta", "emulators", "pubsub", "start", "--project=entregador-local", "--host-port=0.0.0.0:8085"]
+    ports:
+      - "8085:8085"
+    extra_hosts:
+      # Lets the emulator push to an api running on the host (make infra + make api).
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # Creates the topic and the push subscription that delivers to the api, then exits.
+  pubsub-init:
+    image: curlimages/curl:8.10.1
+    depends_on:
+      - pubsub
+    environment:
+      PUSH_ENDPOINT: ${PUBSUB_PUSH_ENDPOINT:-http://api:8081/internal/pubsub/notifications}
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      '
+      E=http://pubsub:8085/v1/projects/entregador-local;
+      until curl -sf $$E/topics >/dev/null; do echo "waiting for pubsub"; sleep 2; done;
+      curl -s -X PUT $$E/topics/delivery-notifications;
+      curl -s -X PUT $$E/subscriptions/delivery-notifications-push -H "Content-Type: application/json" -d "{
+        \"topic\": \"projects/entregador-local/topics/delivery-notifications\",
+        \"ackDeadlineSeconds\": 60,
+        \"pushConfig\": {\"pushEndpoint\": \"$$PUSH_ENDPOINT\"}
+      }";
+      '
+    restart: "no"
+
+  api:
+    <<: *app
+    image: entregador-api
+    container_name: entregador-api
+    ports:
+      - "8081:8081"
+    depends_on:
+      mongodb:
+        condition: service_started
+      pubsub-init:
+        condition: service_completed_successfully
+      kafka-init-topics:
+        condition: service_completed_successfully
+        required: false
+
   kafka:
+    profiles: [kafka]
     image: apache/kafka:3.9.0
     ports:
       - "9094:9094"
@@ -37,15 +98,8 @@ services:
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
     restart: unless-stopped
 
-  mongodb:
-    image: mongo:7
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-    restart: unless-stopped
-
   kafka-ui:
+    profiles: [kafka]
     image: provectuslabs/kafka-ui:latest
     depends_on:
       - kafka
@@ -57,6 +111,7 @@ services:
     restart: unless-stopped
 
   kafka-init-topics:
+    profiles: [kafka]
     image: apache/kafka:3.9.0
     depends_on:
       - kafka
@@ -67,45 +122,27 @@ services:
         echo "waiting for kafka";
         sleep 2;
       done;
-      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic resident-management.events --partitions 1 --replication-factor 1;
-      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic delivery-management.events --partitions 1 --replication-factor 1;
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic delivery-internal.commands --partitions 1 --replication-factor 1;
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic delivery-subscriber.dlq --partitions 1 --replication-factor 1;
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list;
       '
     restart: "no"
 
-  resident-events-consumer:
-    <<: *consumer
-    image: entregador-resident-events-consumer
-    container_name: entregador-resident-events-consumer
-    command: ["./main", "-config=config/subscriber/deployments/delivery_subscriber_resident_management_events.json"]
-
-  delivery-events-consumer:
-    <<: *consumer
-    image: entregador-delivery-events-consumer
-    container_name: entregador-delivery-events-consumer
-    command: ["./main", "-config=config/subscriber/deployments/delivery_subscriber_delivery_management_events.json"]
-
-  internal-commands-consumer:
-    <<: *consumer
-    image: entregador-internal-commands-consumer
-    container_name: entregador-internal-commands-consumer
-    command: ["./main", "-config=config/subscriber/deployments/delivery_subscriber_internal_commands.json"]
-
-  api:
-    <<: *consumer
+  worker:
+    <<: *app
+    profiles: [kafka]
     build:
       context: .
       args:
-        APP: api
-    image: entregador-api
-    container_name: entregador-api
-    ports:
-      - "8081:8081"
+        APP: worker
+    image: entregador-worker
+    container_name: entregador-worker
+    command: ["./main", "-config=config/subscriber/deployments/delivery_subscriber_internal_commands.json"]
     depends_on:
       mongodb:
         condition: service_started
+      kafka-init-topics:
+        condition: service_completed_successfully
 
 volumes:
   mongo_data:
