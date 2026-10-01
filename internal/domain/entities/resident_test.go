@@ -56,6 +56,9 @@ func TestNewOtherResident(t *testing.T) {
 			if got.Type != ResidentTypeOther || !got.IsOther() {
 				t.Errorf("Type = %q, want %q", got.Type, ResidentTypeOther)
 			}
+			if got.Status != ResidentStatusCreated {
+				t.Errorf("Status = %q, want %q", got.Status, ResidentStatusCreated)
+			}
 		})
 	}
 }
@@ -67,15 +70,37 @@ func TestResidentIsOther(t *testing.T) {
 		want     bool
 	}{
 		{name: "other", resident: &Resident{Type: ResidentTypeOther}, want: true},
-		{name: "resident", resident: &Resident{Type: ResidentTypeResident}, want: false},
+		{name: "primary", resident: &Resident{Type: ResidentTypePrimary}, want: false},
+		{name: "secondary", resident: &Resident{Type: ResidentTypeSecondary}, want: false},
 		{name: "empty type", resident: &Resident{}, want: false},
-		{name: "other id prefix but resident type", resident: &Resident{ResidentID: OtherResidentID("101"), Type: ResidentTypeResident}, want: false},
+		{name: "other id prefix but secondary type", resident: &Resident{ResidentID: OtherResidentID("101"), Type: ResidentTypeSecondary}, want: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.resident.IsOther(); got != tt.want {
 				t.Errorf("IsOther() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResidentIsPrimary(t *testing.T) {
+	tests := []struct {
+		name     string
+		resident *Resident
+		want     bool
+	}{
+		{name: "primary", resident: &Resident{Type: ResidentTypePrimary}, want: true},
+		{name: "secondary", resident: &Resident{Type: ResidentTypeSecondary}, want: false},
+		{name: "other", resident: &Resident{Type: ResidentTypeOther}, want: false},
+		{name: "empty type", resident: &Resident{}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.resident.IsPrimary(); got != tt.want {
+				t.Errorf("IsPrimary() = %v, want %v", got, tt.want)
 			}
 		})
 	}

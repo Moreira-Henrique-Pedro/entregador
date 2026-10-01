@@ -46,7 +46,7 @@ func (w *ProcessDeleteDelivery) Handle(ctx context.Context, command *commands.Pr
 
 	if delivery.Status == entities.DeliveryStatusPending {
 		err := w.deliveryRepository.MarkAsDeleted(ctx, delivery.DeliveryID)
-		// Not found here means it was deleted concurrently, which is the state we want.
+
 		if err != nil && !errors.Is(err, entities.ErrEntityNotFound) {
 			return fmt.Errorf("failed to delete delivery: deliveryID=%s: %w", delivery.DeliveryID, err)
 		}
@@ -55,8 +55,7 @@ func (w *ProcessDeleteDelivery) Handle(ctx context.Context, command *commands.Pr
 		logger.Info("Delivery already deleted")
 	}
 
-	// Also runs for an already deleted delivery, so a retry after a failed publish
-	// still notifies the pickup; the notify writer ignores duplicates.
+	// Runs even for an already deleted delivery, so a retry after a failed publish still notifies.
 	if !delivery.PickupNotifiedAt.IsZero() {
 		return nil
 	}

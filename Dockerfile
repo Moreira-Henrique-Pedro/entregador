@@ -26,6 +26,9 @@ WORKDIR /root/
 # Copiar o binário compilado
 COPY --from=builder /app/main .
 
+# Configs dos consumers, passadas via -config
+COPY --from=builder /app/config/subscriber/deployments ./config/subscriber/deployments
+
 # Expor a porta que sua aplicação usa
 EXPOSE 8080
 

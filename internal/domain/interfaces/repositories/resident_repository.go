@@ -8,8 +8,8 @@ import (
 
 type ResidentRepositoryPort interface {
 	Insert(ctx context.Context, resident *entities.Resident) error
-	// EnsureOtherResident creates the apartment's "other" resident if it does not exist yet.
 	EnsureOtherResident(ctx context.Context, apartment string) error
+	EnsurePrimaryResident(ctx context.Context, apartment string) error
 	Update(ctx context.Context, resident *entities.Resident) error
 	DeleteByResidentID(ctx context.Context, residentID string) error
 	FindByResidentID(ctx context.Context, residentID string) (*entities.Resident, error)

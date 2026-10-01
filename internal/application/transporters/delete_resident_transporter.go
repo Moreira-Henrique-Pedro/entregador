@@ -31,7 +31,7 @@ func NewDeleteResidentTransporter(
 func (t *DeleteResidentTransporter) Handle(ctx context.Context, event *events.DeleteResident) error {
 	logger := logger.GetLoggerFromContext(ctx)
 
-	logger.Info("Publishing DeleteResident event to topic %s", t.internalTopic)
+	logger.Info("Publishing DeleteResident event", "internal_topic", t.internalTopic)
 
 	command := t.buildInternalCommand(ctx, event)
 

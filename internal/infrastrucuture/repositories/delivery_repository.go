@@ -32,7 +32,7 @@ func NewMongoDBDeliveryRepository(ctx context.Context, client client.MongoClient
 func deliveryIndexes() []mongo.IndexModel {
 	return []mongo.IndexModel{
 		{Keys: bson.D{{Key: "delivery_id", Value: 1}}, Options: options.Index().SetUnique(true)},
-		// FindByApartment sorts by creation date, with and without a status filter.
+
 		{Keys: bson.D{{Key: "apartment", Value: 1}, {Key: createdAtField, Value: -1}}},
 		{Keys: bson.D{{Key: "apartment", Value: 1}, {Key: "status", Value: 1}, {Key: createdAtField, Value: -1}}},
 	}
@@ -52,7 +52,7 @@ func (r *MongoDBDeliveryRepository) Insert(ctx context.Context, delivery *entiti
 	_, err := r.collection.InsertOne(ctx, model)
 	if mongo.IsDuplicateKeyError(err) {
 		logger := logger.GetLoggerFromContext(ctx)
-		logger.Warn("Duplicate key error while inserting delivery", model.DeliveryID, "error", err)
+		logger.Warn("Duplicate key error while inserting delivery", "delivery_id", model.DeliveryID, "error", err.Error())
 		return nil
 	}
 	return err

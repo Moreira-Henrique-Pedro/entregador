@@ -92,11 +92,21 @@ func ReadEnvs() (*Environment, error) {
 		if err := envdecode.Decode(Envs); err != nil {
 			return nil, fmt.Errorf("error loading environment variables: %w", err)
 		}
-		Envs.Pubsub.DeliveryBrokersHosts = strings.Split(Envs.Pubsub.DeliveryBrokersHostsRaw, ",")
+		Envs.Pubsub.DeliveryBrokersHosts = splitHosts(Envs.Pubsub.DeliveryBrokersHostsRaw)
 		AppName = Envs.App.Name
 	}
 
 	return Envs, nil
+}
+
+func splitHosts(raw string) []string {
+	hosts := []string{}
+	for _, host := range strings.Split(raw, ",") {
+		if host = strings.TrimSpace(host); host != "" {
+			hosts = append(hosts, host)
+		}
+	}
+	return hosts
 }
 
 func (c *Environment) IsProduction() bool {

@@ -3,9 +3,7 @@ package entities
 type DeliveryStatus string
 
 const (
-	// DeliveryStatusPending is a delivery waiting at the front desk to be picked up.
 	DeliveryStatusPending DeliveryStatus = "pending"
-	// DeliveryStatusDeleted is a delivery already picked up by the resident.
 	DeliveryStatusDeleted DeliveryStatus = "deleted"
 )
 

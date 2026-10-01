@@ -3,23 +3,28 @@ package repositories
 import (
 	"context"
 	"errors"
-	"strings"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories/client/mocks"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/infrastrucuture/repositories/models"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func newDeliveryRepo(t *testing.T, fake *fakeCollection) *MongoDBDeliveryRepository {
+func newDeliveryRepo(t *testing.T) (*MongoDBDeliveryRepository, *mocks.MongoClientCollectionPort) {
 	t.Helper()
-	repo, err := NewMongoDBDeliveryRepository(context.Background(), fake)
-	if err != nil {
-		t.Fatalf("NewMongoDBDeliveryRepository() error = %v", err)
-	}
-	return repo.(*MongoDBDeliveryRepository)
+	coll := mocks.NewMongoClientCollectionPort(t)
+	expectIndexes(coll)
+	repo, err := NewMongoDBDeliveryRepository(context.Background(), coll)
+	require.NoError(t, err)
+	return repo.(*MongoDBDeliveryRepository), coll
 }
 
 func statusPtr(s entities.DeliveryStatus) *entities.DeliveryStatus { return &s }
@@ -37,22 +42,24 @@ func TestNewMongoDBDeliveryRepository(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fake := &fakeCollection{ensureIndexesErr: tt.err}
-			repo, err := NewMongoDBDeliveryRepository(context.Background(), fake)
+			coll := mocks.NewMongoClientCollectionPort(t)
+			var gotIndexes []mongo.IndexModel
+			coll.EXPECT().EnsureIndexes(mock.Anything, mock.Anything).
+				Run(func(_ context.Context, indexes []mongo.IndexModel) { gotIndexes = indexes }).
+				Return(tt.err).
+				Once()
+
+			repo, err := NewMongoDBDeliveryRepository(context.Background(), coll)
 
 			if tt.wantErr {
-				if !errors.Is(err, tt.err) || repo != nil {
-					t.Fatalf("got (%v, %v), want (nil, wrapping %v)", repo, err, tt.err)
-				}
-				if !strings.Contains(err.Error(), "deliveries indexes") {
-					t.Errorf("error = %q, want it to mention deliveries indexes", err)
-				}
+				require.ErrorIs(t, err, tt.err)
+				assert.Nil(t, repo)
+				assert.Contains(t, err.Error(), "deliveries indexes")
 				return
 			}
-			if err != nil || repo == nil {
-				t.Fatalf("got (%v, %v), want repository and nil error", repo, err)
-			}
-			assertIndexes(t, fake.gotIndexes,
+			require.NoError(t, err)
+			require.NotNil(t, repo)
+			assertIndexes(t, gotIndexes,
 				[]bson.D{
 					{{Key: "delivery_id", Value: 1}},
 					{{Key: "apartment", Value: 1}, {Key: "createdat", Value: -1}},
@@ -85,38 +92,30 @@ func TestDeliveryRepositoryInsert(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fake := &fakeCollection{insertErr: tt.insertErr}
-			repo := newDeliveryRepo(t, fake)
+			repo, coll := newDeliveryRepo(t)
+			var model *models.Delivery
+			if !tt.wantAnyErr {
+				coll.EXPECT().InsertOne(mock.Anything, mock.AnythingOfType("*models.Delivery")).
+					Run(func(_ context.Context, document any, _ ...*options.InsertOneOptions) {
+						model = document.(*models.Delivery)
+					}).
+					Return(&mongo.InsertOneResult{}, tt.insertErr).
+					Once()
+			}
 			before := time.Now().UTC()
 
 			err := repo.Insert(context.Background(), tt.delivery)
 
 			if tt.wantAnyErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
-				if len(fake.gotInserted) != 0 {
-					t.Errorf("InsertOne called %d times, want 0", len(fake.gotInserted))
-				}
+				require.Error(t, err)
 				return
 			}
-			if !errors.Is(err, tt.wantErr) {
-				t.Fatalf("error = %v, want %v", err, tt.wantErr)
-			}
-			if len(fake.gotInserted) != 1 {
-				t.Fatalf("InsertOne called %d times, want 1", len(fake.gotInserted))
-			}
-			model, ok := fake.gotInserted[0].(*models.Delivery)
-			if !ok {
-				t.Fatalf("inserted type = %T, want *models.Delivery", fake.gotInserted[0])
-			}
-			if model.DeliveryID != tt.delivery.DeliveryID || model.Status != string(tt.delivery.Status) {
-				t.Errorf("inserted = %+v, want converted %+v", model, tt.delivery)
-			}
+			require.ErrorIs(t, err, tt.wantErr)
+			require.NotNil(t, model)
+			assert.Equal(t, tt.delivery.DeliveryID, model.DeliveryID)
+			assert.Equal(t, string(tt.delivery.Status), model.Status)
 			if tt.wantCreatedAt != nil {
-				if !model.CreatedAt.Equal(*tt.wantCreatedAt) {
-					t.Errorf("CreatedAt = %v, want %v", model.CreatedAt, *tt.wantCreatedAt)
-				}
+				assert.True(t, model.CreatedAt.Equal(*tt.wantCreatedAt), "CreatedAt = %v, want %v", model.CreatedAt, *tt.wantCreatedAt)
 			} else {
 				assertRecentTime(t, "CreatedAt", model.CreatedAt, before)
 			}
@@ -131,7 +130,7 @@ func TestDeliveryRepositoryFindByDeliveryID(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		doc     interface{}
+		doc     any
 		findErr error
 		wantErr error
 	}{
@@ -142,51 +141,41 @@ func TestDeliveryRepositoryFindByDeliveryID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fake := &fakeCollection{findOneDoc: tt.doc, findOneErr: tt.findErr}
-			repo := newDeliveryRepo(t, fake)
+			repo, coll := newDeliveryRepo(t)
+			coll.EXPECT().FindOne(mock.Anything, bson.M{"delivery_id": "d1"}).
+				Return(singleResult(tt.doc, tt.findErr)).
+				Once()
 
 			got, err := repo.FindByDeliveryID(context.Background(), "d1")
 
-			if len(fake.gotFindOne) != 1 {
-				t.Fatalf("FindOne called %d times, want 1", len(fake.gotFindOne))
-			}
-			filter, ok := fake.gotFindOne[0].(bson.M)
-			if !ok {
-				t.Fatalf("filter type = %T, want bson.M", fake.gotFindOne[0])
-			}
-			assertFilter(t, filter, bson.M{"delivery_id": "d1"})
-
 			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) || got != nil {
-					t.Fatalf("got (%v, %v), want (nil, %v)", got, err, tt.wantErr)
-				}
-				if errors.Is(tt.wantErr, entities.ErrEntityNotFound) && !strings.Contains(err.Error(), "d1") {
-					t.Errorf("error = %q, want it to contain the delivery id", err)
+				require.ErrorIs(t, err, tt.wantErr)
+				assert.Nil(t, got)
+				if errors.Is(tt.wantErr, entities.ErrEntityNotFound) {
+					assert.Contains(t, err.Error(), "d1")
 				}
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			want := stored.ToEntity()
-			if *got != *want {
-				t.Errorf("got %+v, want %+v", got, want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, stored.ToEntity(), got)
 		})
 	}
 }
 
 func TestDeliveryRepositoryFindByApartment(t *testing.T) {
 	boom := errors.New("boom")
-	docs := []interface{}{
+	docs := []any{
 		models.Delivery{ID: "d2", DeliveryID: "d2", Apartment: "101", Status: "deleted"},
 		models.Delivery{ID: "d1", DeliveryID: "d1", Apartment: "101", Status: "pending"},
 	}
+	sortedByCreationDesc := mock.MatchedBy(func(o *options.FindOptions) bool {
+		return o != nil && reflect.DeepEqual(o.Sort, bson.D{{Key: "createdat", Value: -1}})
+	})
 
 	tests := []struct {
 		name       string
 		status     *entities.DeliveryStatus
-		docs       []interface{}
+		docs       []any
 		findErr    error
 		wantFilter bson.M
 		wantErr    error
@@ -194,47 +183,30 @@ func TestDeliveryRepositoryFindByApartment(t *testing.T) {
 	}{
 		{name: "without status", docs: docs, wantFilter: bson.M{"apartment": "101"}, wantIDs: []string{"d2", "d1"}},
 		{name: "with status", status: statusPtr(entities.DeliveryStatusPending), docs: docs[1:], wantFilter: bson.M{"apartment": "101", "status": "pending"}, wantIDs: []string{"d1"}},
-		{name: "no results", docs: []interface{}{}, wantFilter: bson.M{"apartment": "101"}, wantIDs: []string{}},
+		{name: "no results", docs: []any{}, wantFilter: bson.M{"apartment": "101"}, wantIDs: []string{}},
 		{name: "find error", findErr: boom, wantFilter: bson.M{"apartment": "101"}, wantErr: boom},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fake := &fakeCollection{findDocs: tt.docs, findErr: tt.findErr}
-			repo := newDeliveryRepo(t, fake)
+			repo, coll := newDeliveryRepo(t)
+			call := coll.EXPECT().Find(mock.Anything, tt.wantFilter, sortedByCreationDesc).Once()
+			if tt.findErr != nil {
+				call.Return(nil, tt.findErr)
+			} else {
+				call.Return(cursor(t, tt.docs), nil)
+			}
 
 			got, err := repo.FindByApartment(context.Background(), "101", tt.status)
 
-			if len(fake.gotFind) != 1 {
-				t.Fatalf("Find called %d times, want 1", len(fake.gotFind))
-			}
-			filter, ok := fake.gotFind[0].(bson.M)
-			if !ok {
-				t.Fatalf("filter type = %T, want bson.M", fake.gotFind[0])
-			}
-			assertFilter(t, filter, tt.wantFilter)
-
-			if len(fake.gotFindOpts) != 1 {
-				t.Fatalf("got %d find options, want 1", len(fake.gotFindOpts))
-			}
-			sort, ok := fake.gotFindOpts[0].Sort.(bson.D)
-			if !ok || len(sort) != 1 || sort[0] != (bson.E{Key: "createdat", Value: -1}) {
-				t.Errorf("sort = %v, want createdat desc", fake.gotFindOpts[0].Sort)
-			}
-
-			if !errors.Is(err, tt.wantErr) {
-				t.Fatalf("error = %v, want %v", err, tt.wantErr)
-			}
+			require.ErrorIs(t, err, tt.wantErr)
 			if tt.wantErr != nil {
 				return
 			}
-			if got == nil || len(got) != len(tt.wantIDs) {
-				t.Fatalf("got %d deliveries (%v), want %d", len(got), got, len(tt.wantIDs))
-			}
+			require.NotNil(t, got)
+			require.Len(t, got, len(tt.wantIDs))
 			for i, d := range got {
-				if d.DeliveryID != tt.wantIDs[i] {
-					t.Errorf("delivery %d id = %q, want %q", i, d.DeliveryID, tt.wantIDs[i])
-				}
+				assert.Equalf(t, tt.wantIDs[i], d.DeliveryID, "delivery %d id", i)
 			}
 		})
 	}
@@ -255,23 +227,20 @@ func TestDeliveryRepositoryMarkAsDeleted(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fake := &fakeCollection{updateResult: tt.result, updateErr: tt.updateErr}
-			repo := newDeliveryRepo(t, fake)
+			repo, coll := newDeliveryRepo(t)
+			var gotUpdate any
+			expectUpdate(coll, bson.M{"delivery_id": "d1", "status": "pending", "deleteat": time.Time{}}, tt.result, tt.updateErr, &gotUpdate)
 			before := time.Now().UTC()
 
 			err := repo.MarkAsDeleted(context.Background(), "d1")
-			if !errors.Is(err, tt.wantErr) {
-				t.Fatalf("error = %v, want %v", err, tt.wantErr)
-			}
-			if errors.Is(tt.wantErr, entities.ErrEntityNotFound) && !strings.Contains(err.Error(), "d1") {
-				t.Errorf("error = %q, want it to contain the delivery id", err)
+			require.ErrorIs(t, err, tt.wantErr)
+			if errors.Is(tt.wantErr, entities.ErrEntityNotFound) {
+				assert.Contains(t, err.Error(), "d1")
 			}
 
-			assertFilter(t, fake.lastUpdateFilter(t), bson.M{"delivery_id": "d1", "status": "pending", "deleteat": time.Time{}})
-			set := fake.lastSet(t)
-			if len(set) != 3 || set["status"] != "deleted" {
-				t.Errorf("$set = %v, want status deleted, deleteat and updatedat", set)
-			}
+			set := setOf(t, gotUpdate)
+			assert.Len(t, set, 3, "$set = %v, want status, deleteat and updatedat", set)
+			assert.Equal(t, "deleted", set["status"])
 			assertRecentTime(t, "deleteat", set["deleteat"], before)
 			assertRecentTime(t, "updatedat", set["updatedat"], before)
 		})
@@ -301,23 +270,19 @@ func TestDeliveryRepositoryMarkAsNotified(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fake := &fakeCollection{updateResult: tt.result, updateErr: tt.updateErr}
-			repo := newDeliveryRepo(t, fake)
+			repo, coll := newDeliveryRepo(t)
+			var gotUpdate any
+			expectUpdate(coll, bson.M{"delivery_id": "d1"}, tt.result, tt.updateErr, &gotUpdate)
 			before := time.Now().UTC()
 
 			err := tt.call(repo)
-			if !errors.Is(err, tt.wantErr) {
-				t.Fatalf("error = %v, want %v", err, tt.wantErr)
-			}
-			if errors.Is(tt.wantErr, entities.ErrEntityNotFound) && !strings.Contains(err.Error(), "d1") {
-				t.Errorf("error = %q, want it to contain the delivery id", err)
+			require.ErrorIs(t, err, tt.wantErr)
+			if errors.Is(tt.wantErr, entities.ErrEntityNotFound) {
+				assert.Contains(t, err.Error(), "d1")
 			}
 
-			assertFilter(t, fake.lastUpdateFilter(t), bson.M{"delivery_id": "d1"})
-			set := fake.lastSet(t)
-			if len(set) != 2 {
-				t.Errorf("$set = %v, want %s and updatedat", set, tt.field)
-			}
+			set := setOf(t, gotUpdate)
+			assert.Len(t, set, 2, "$set = %v, want %s and updatedat", set, tt.field)
 			assertRecentTime(t, tt.field, set[tt.field], before)
 			assertRecentTime(t, "updatedat", set["updatedat"], before)
 		})

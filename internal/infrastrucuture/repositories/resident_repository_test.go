@@ -3,23 +3,28 @@ package repositories
 import (
 	"context"
 	"errors"
-	"strings"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories/client/mocks"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/infrastrucuture/repositories/models"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func newResidentRepo(t *testing.T, fake *fakeCollection) *MongoDBResidentRepository {
+func newResidentRepo(t *testing.T) (*MongoDBResidentRepository, *mocks.MongoClientCollectionPort) {
 	t.Helper()
-	repo, err := NewMongoDBResidentRepository(context.Background(), fake)
-	if err != nil {
-		t.Fatalf("NewMongoDBResidentRepository() error = %v", err)
-	}
-	return repo.(*MongoDBResidentRepository)
+	coll := mocks.NewMongoClientCollectionPort(t)
+	expectIndexes(coll)
+	repo, err := NewMongoDBResidentRepository(context.Background(), coll)
+	require.NoError(t, err)
+	return repo.(*MongoDBResidentRepository), coll
 }
 
 func TestNewMongoDBResidentRepository(t *testing.T) {
@@ -35,29 +40,36 @@ func TestNewMongoDBResidentRepository(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fake := &fakeCollection{ensureIndexesErr: tt.err}
-			repo, err := NewMongoDBResidentRepository(context.Background(), fake)
+			coll := mocks.NewMongoClientCollectionPort(t)
+			var gotIndexes []mongo.IndexModel
+			coll.EXPECT().EnsureIndexes(mock.Anything, mock.Anything).
+				Run(func(_ context.Context, indexes []mongo.IndexModel) { gotIndexes = indexes }).
+				Return(tt.err).
+				Once()
+
+			repo, err := NewMongoDBResidentRepository(context.Background(), coll)
 
 			if tt.wantErr {
-				if !errors.Is(err, tt.err) || repo != nil {
-					t.Fatalf("got (%v, %v), want (nil, wrapping %v)", repo, err, tt.err)
-				}
-				if !strings.Contains(err.Error(), "residents indexes") {
-					t.Errorf("error = %q, want it to mention residents indexes", err)
-				}
+				require.ErrorIs(t, err, tt.err)
+				assert.Nil(t, repo)
+				assert.Contains(t, err.Error(), "residents indexes")
 				return
 			}
-			if err != nil || repo == nil {
-				t.Fatalf("got (%v, %v), want repository and nil error", repo, err)
-			}
-			assertIndexes(t, fake.gotIndexes,
+			require.NoError(t, err)
+			require.NotNil(t, repo)
+			assertIndexes(t, gotIndexes,
 				[]bson.D{
 					{{Key: "resident_id", Value: 1}},
 					{{Key: "apartment", Value: 1}, {Key: "deleteat", Value: 1}},
 					{{Key: "phone", Value: 1}, {Key: "deleteat", Value: 1}},
+					{{Key: "apartment", Value: 1}},
 				},
-				[]bool{true, false, false},
+				[]bool{true, false, false, true},
 			)
+			primaryIndex := gotIndexes[3].Options
+			require.NotNil(t, primaryIndex.Name)
+			assert.Equal(t, "apartment_primary_unique", *primaryIndex.Name)
+			assert.Equal(t, bson.M{"type": "resident-primary", "deleteat": time.Time{}}, primaryIndex.PartialFilterExpression)
 		})
 	}
 }
@@ -77,49 +89,41 @@ func TestResidentRepositoryInsert(t *testing.T) {
 		wantNoInsert  bool
 	}{
 		{name: "nil resident", resident: nil, wantAnyErr: true, wantNoInsert: true},
-		{name: "sets timestamps and defaults type", resident: &entities.Resident{ResidentID: "r1", Name: "Ana"}, wantType: "resident"},
-		{name: "keeps existing created at", resident: &entities.Resident{ResidentID: "r1", CreatedAt: created}, wantCreatedAt: &created, wantType: "resident"},
+		{name: "sets timestamps and defaults type", resident: &entities.Resident{ResidentID: "r1", Name: "Ana"}, wantType: "resident-secondary"},
+		{name: "keeps existing created at", resident: &entities.Resident{ResidentID: "r1", CreatedAt: created}, wantCreatedAt: &created, wantType: "resident-secondary"},
 		{name: "keeps other type", resident: &entities.Resident{ResidentID: "other-101", Type: entities.ResidentTypeOther}, wantType: "other"},
-		{name: "duplicate key is swallowed", resident: &entities.Resident{ResidentID: "r1"}, insertErr: duplicateKeyErr(), wantType: "resident"},
-		{name: "other errors are returned", resident: &entities.Resident{ResidentID: "r1"}, insertErr: boom, wantErr: boom, wantType: "resident"},
+		{name: "duplicate key is swallowed", resident: &entities.Resident{ResidentID: "r1"}, insertErr: duplicateKeyErr(), wantType: "resident-secondary"},
+		{name: "other errors are returned", resident: &entities.Resident{ResidentID: "r1"}, insertErr: boom, wantErr: boom, wantType: "resident-secondary"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fake := &fakeCollection{insertErr: tt.insertErr}
-			repo := newResidentRepo(t, fake)
+			repo, coll := newResidentRepo(t)
+			var model *models.Resident
+			if !tt.wantNoInsert {
+				coll.EXPECT().InsertOne(mock.Anything, mock.AnythingOfType("*models.Resident")).
+					Run(func(_ context.Context, document any, _ ...*options.InsertOneOptions) {
+						model = document.(*models.Resident)
+					}).
+					Return(&mongo.InsertOneResult{}, tt.insertErr).
+					Once()
+			}
 			before := time.Now().UTC()
 
 			err := repo.Insert(context.Background(), tt.resident)
 
-			switch {
-			case tt.wantAnyErr:
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
-			case !errors.Is(err, tt.wantErr):
-				t.Fatalf("error = %v, want %v", err, tt.wantErr)
+			if tt.wantAnyErr {
+				require.Error(t, err)
+			} else {
+				require.ErrorIs(t, err, tt.wantErr)
 			}
 			if tt.wantNoInsert {
-				if len(fake.gotInserted) != 0 {
-					t.Errorf("InsertOne called %d times, want 0", len(fake.gotInserted))
-				}
 				return
 			}
-			if len(fake.gotInserted) != 1 {
-				t.Fatalf("InsertOne called %d times, want 1", len(fake.gotInserted))
-			}
-			model, ok := fake.gotInserted[0].(*models.Resident)
-			if !ok {
-				t.Fatalf("inserted type = %T, want *models.Resident", fake.gotInserted[0])
-			}
-			if model.Type != tt.wantType {
-				t.Errorf("Type = %q, want %q", model.Type, tt.wantType)
-			}
+			require.NotNil(t, model)
+			assert.Equal(t, tt.wantType, model.Type)
 			if tt.wantCreatedAt != nil {
-				if !model.CreatedAt.Equal(*tt.wantCreatedAt) {
-					t.Errorf("CreatedAt = %v, want %v", model.CreatedAt, *tt.wantCreatedAt)
-				}
+				assert.True(t, model.CreatedAt.Equal(*tt.wantCreatedAt), "CreatedAt = %v, want %v", model.CreatedAt, *tt.wantCreatedAt)
 			} else {
 				assertRecentTime(t, "CreatedAt", model.CreatedAt, before)
 			}
@@ -142,37 +146,101 @@ func TestResidentRepositoryEnsureOtherResident(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fake := &fakeCollection{updateErr: tt.updateErr}
-			repo := newResidentRepo(t, fake)
+			repo, coll := newResidentRepo(t)
+			var gotUpdate any
+			var gotOpts []*options.UpdateOptions
+			coll.EXPECT().UpdateOne(mock.Anything, bson.M{"resident_id": "other-101"}, mock.Anything, mock.Anything).
+				Run(func(_ context.Context, _ any, update any, opts ...*options.UpdateOptions) {
+					gotUpdate = update
+					gotOpts = opts
+				}).
+				Return(updateResult(nil, tt.updateErr)).
+				Once()
 			before := time.Now().UTC()
 
 			err := repo.EnsureOtherResident(context.Background(), "101")
-			if !errors.Is(err, tt.wantErr) {
-				t.Fatalf("error = %v, want %v", err, tt.wantErr)
-			}
+			require.ErrorIs(t, err, tt.wantErr)
 
-			assertFilter(t, fake.lastUpdateFilter(t), bson.M{"resident_id": "other-101"})
-
-			update, ok := fake.gotUpdate[0].(bson.M)
-			if !ok {
-				t.Fatalf("update type = %T, want bson.M", fake.gotUpdate[0])
-			}
-			if len(update) != 1 {
-				t.Errorf("update = %v, want only $setOnInsert", update)
-			}
+			update, ok := gotUpdate.(bson.M)
+			require.Truef(t, ok, "update type = %T, want bson.M", gotUpdate)
+			assert.Len(t, update, 1, "update = %v, want only $setOnInsert", update)
 			model, ok := update["$setOnInsert"].(*models.Resident)
-			if !ok {
-				t.Fatalf("$setOnInsert type = %T, want *models.Resident", update["$setOnInsert"])
-			}
-			if model.ID != "other-101" || model.ResidentID != "other-101" || model.Apartment != "101" || model.Type != "other" {
-				t.Errorf("$setOnInsert = %+v, want other resident of apartment 101", model)
-			}
+			require.Truef(t, ok, "$setOnInsert type = %T, want *models.Resident", update["$setOnInsert"])
+			assert.Equal(t, "other-101", model.ID)
+			assert.Equal(t, "other-101", model.ResidentID)
+			assert.Equal(t, "101", model.Apartment)
+			assert.Equal(t, "other", model.Type)
 			assertRecentTime(t, "CreatedAt", model.CreatedAt, before)
 			assertRecentTime(t, "UpdatedAt", model.UpdatedAt, before)
 
-			if len(fake.gotUpdateOpts) != 1 || fake.gotUpdateOpts[0].Upsert == nil || !*fake.gotUpdateOpts[0].Upsert {
-				t.Errorf("update options = %v, want upsert true", fake.gotUpdateOpts)
+			require.Len(t, gotOpts, 1)
+			require.NotNil(t, gotOpts[0].Upsert)
+			assert.True(t, *gotOpts[0].Upsert)
+		})
+	}
+}
+
+type findOneResult struct {
+	doc any
+	err error
+}
+
+func TestResidentRepositoryEnsurePrimaryResident(t *testing.T) {
+	boom := errors.New("boom")
+	noDocs := findOneResult{err: mongo.ErrNoDocuments}
+	primary := findOneResult{doc: models.Resident{ResidentID: "ana", Apartment: "101", Type: "resident-primary"}}
+	candidate := findOneResult{doc: models.Resident{ResidentID: "bia", Apartment: "101", Type: "resident-secondary"}}
+
+	primaryFilter := bson.M{"apartment": "101", "type": "resident-primary", "deleteat": time.Time{}}
+	candidateFilter := bson.M{"apartment": "101", "type": bson.M{"$ne": "other"}, "deleteat": time.Time{}}
+	wantSort := bson.D{{Key: "createdat", Value: 1}, {Key: "resident_id", Value: 1}}
+	sortedByCreation := mock.MatchedBy(func(o *options.FindOneOptions) bool {
+		return o != nil && reflect.DeepEqual(o.Sort, wantSort)
+	})
+
+	tests := []struct {
+		name        string
+		finds       []findOneResult
+		updateErr   error
+		wantErr     error
+		wantPromote bool
+	}{
+		{name: "apartment with primary is left untouched", finds: []findOneResult{primary}},
+		{name: "oldest resident is promoted when there is no primary", finds: []findOneResult{noDocs, candidate}, wantPromote: true},
+		{name: "apartment without residents has nothing to promote", finds: []findOneResult{noDocs, noDocs}},
+		{name: "concurrent promotion is swallowed", finds: []findOneResult{noDocs, candidate}, updateErr: duplicateKeyErr(), wantPromote: true},
+		{name: "primary lookup error is returned", finds: []findOneResult{{err: boom}}, wantErr: boom},
+		{name: "candidate lookup error is returned", finds: []findOneResult{noDocs, {err: boom}}, wantErr: boom},
+		{name: "promotion error is returned", finds: []findOneResult{noDocs, candidate}, updateErr: boom, wantErr: boom, wantPromote: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo, coll := newResidentRepo(t)
+			coll.EXPECT().FindOne(mock.Anything, primaryFilter).
+				Return(singleResult(tt.finds[0].doc, tt.finds[0].err)).
+				Once()
+			if len(tt.finds) == 2 {
+				coll.EXPECT().FindOne(mock.Anything, candidateFilter, sortedByCreation).
+					Return(singleResult(tt.finds[1].doc, tt.finds[1].err)).
+					Once()
 			}
+			var gotUpdate any
+			if tt.wantPromote {
+				expectUpdate(coll, bson.M{"resident_id": "bia", "deleteat": time.Time{}}, nil, tt.updateErr, &gotUpdate)
+			}
+			before := time.Now().UTC()
+
+			err := repo.EnsurePrimaryResident(context.Background(), "101")
+
+			require.ErrorIs(t, err, tt.wantErr)
+			if !tt.wantPromote {
+				return
+			}
+			set := setOf(t, gotUpdate)
+			assertRecentTime(t, "updatedat", set["updatedat"], before)
+			delete(set, "updatedat")
+			assert.Equal(t, bson.M{"type": "resident-primary"}, set)
 		})
 	}
 }
@@ -200,6 +268,11 @@ func TestResidentRepositoryUpdate(t *testing.T) {
 			wantSet:  bson.M{"phone": "5511"},
 		},
 		{
+			name:     "sets the type when informed",
+			resident: &entities.Resident{ResidentID: "r1", Apartment: "202", Type: entities.ResidentTypeSecondary},
+			wantSet:  bson.M{"apartment": "202", "type": "resident-secondary"},
+		},
+		{
 			name:     "only updatedat when nothing to change",
 			resident: &entities.Resident{ResidentID: "r1"},
 			wantSet:  bson.M{},
@@ -222,34 +295,28 @@ func TestResidentRepositoryUpdate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fake := &fakeCollection{updateResult: tt.result, updateErr: tt.updateErr}
-			repo := newResidentRepo(t, fake)
+			repo, coll := newResidentRepo(t)
+			var gotUpdate any
+			if !tt.wantAnyErr {
+				expectUpdate(coll, bson.M{"resident_id": "r1", "deleteat": time.Time{}}, tt.result, tt.updateErr, &gotUpdate)
+			}
 			before := time.Now().UTC()
 
 			err := repo.Update(context.Background(), tt.resident)
 
 			if tt.wantAnyErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
-				if len(fake.gotUpdate) != 0 {
-					t.Errorf("UpdateOne called %d times, want 0", len(fake.gotUpdate))
-				}
+				require.Error(t, err)
 				return
 			}
-			if !errors.Is(err, tt.wantErr) {
-				t.Fatalf("error = %v, want %v", err, tt.wantErr)
-			}
-			if errors.Is(tt.wantErr, entities.ErrEntityNotFound) && !strings.Contains(err.Error(), "r1") {
-				t.Errorf("error = %q, want it to contain the resident id", err)
+			require.ErrorIs(t, err, tt.wantErr)
+			if errors.Is(tt.wantErr, entities.ErrEntityNotFound) {
+				assert.Contains(t, err.Error(), "r1")
 			}
 
-			assertFilter(t, fake.lastUpdateFilter(t), bson.M{"resident_id": "r1", "deleteat": time.Time{}})
-
-			set := fake.lastSet(t)
+			set := setOf(t, gotUpdate)
 			assertRecentTime(t, "updatedat", set["updatedat"], before)
 			delete(set, "updatedat")
-			assertFilter(t, set, tt.wantSet)
+			assert.Equal(t, tt.wantSet, set)
 		})
 	}
 }
@@ -269,23 +336,20 @@ func TestResidentRepositoryDeleteByResidentID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fake := &fakeCollection{updateResult: tt.result, updateErr: tt.updateErr}
-			repo := newResidentRepo(t, fake)
+			repo, coll := newResidentRepo(t)
+			var gotUpdate any
+			expectUpdate(coll, bson.M{"resident_id": "r1", "deleteat": time.Time{}}, tt.result, tt.updateErr, &gotUpdate)
 			before := time.Now().UTC()
 
 			err := repo.DeleteByResidentID(context.Background(), "r1")
-			if !errors.Is(err, tt.wantErr) {
-				t.Fatalf("error = %v, want %v", err, tt.wantErr)
-			}
-			if tt.wantErr != nil && errors.Is(tt.wantErr, entities.ErrEntityNotFound) && !strings.Contains(err.Error(), "r1") {
-				t.Errorf("error = %q, want it to contain the resident id", err)
+			require.ErrorIs(t, err, tt.wantErr)
+			if errors.Is(tt.wantErr, entities.ErrEntityNotFound) {
+				assert.Contains(t, err.Error(), "r1")
 			}
 
-			assertFilter(t, fake.lastUpdateFilter(t), bson.M{"resident_id": "r1", "deleteat": time.Time{}})
-			set := fake.lastSet(t)
-			if len(set) != 2 {
-				t.Errorf("$set = %v, want deleteat and updatedat", set)
-			}
+			set := setOf(t, gotUpdate)
+			assert.Len(t, set, 3, "$set = %v, want status, deleteat and updatedat", set)
+			assert.Equal(t, "deleted", set["status"])
 			assertRecentTime(t, "deleteat", set["deleteat"], before)
 			assertRecentTime(t, "updatedat", set["updatedat"], before)
 		})
@@ -295,63 +359,53 @@ func TestResidentRepositoryDeleteByResidentID(t *testing.T) {
 func TestResidentRepositoryFindByResidentID(t *testing.T) {
 	boom := errors.New("boom")
 	created := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
-	stored := models.Resident{ID: "r1", ResidentID: "r1", Apartment: "101", Name: "Ana", Phone: "5511", Type: "resident", CreatedAt: created}
+	stored := models.Resident{ID: "r1", ResidentID: "r1", Apartment: "101", Name: "Ana", Phone: "5511", Type: "resident-primary", CreatedAt: created}
 	legacy := models.Resident{ID: "r2", ResidentID: "r2", Apartment: "101", Name: "Bia"}
 
 	tests := []struct {
 		name     string
 		id       string
-		doc      interface{}
+		doc      any
 		findErr  error
 		wantErr  error
 		wantName string
 		wantType entities.ResidentType
 	}{
-		{name: "decodes resident", id: "r1", doc: stored, wantName: "Ana", wantType: entities.ResidentTypeResident},
-		{name: "legacy resident without type", id: "r2", doc: legacy, wantName: "Bia", wantType: entities.ResidentTypeResident},
+		{name: "decodes resident", id: "r1", doc: stored, wantName: "Ana", wantType: entities.ResidentTypePrimary},
+		{name: "legacy resident without type is secondary", id: "r2", doc: legacy, wantName: "Bia", wantType: entities.ResidentTypeSecondary},
 		{name: "not found", id: "r1", findErr: mongo.ErrNoDocuments, wantErr: entities.ErrEntityNotFound},
 		{name: "find error", id: "r1", findErr: boom, wantErr: boom},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fake := &fakeCollection{findOneDoc: tt.doc, findOneErr: tt.findErr}
-			repo := newResidentRepo(t, fake)
+			repo, coll := newResidentRepo(t)
+			coll.EXPECT().FindOne(mock.Anything, bson.M{"resident_id": tt.id, "deleteat": time.Time{}}).
+				Return(singleResult(tt.doc, tt.findErr)).
+				Once()
 
 			got, err := repo.FindByResidentID(context.Background(), tt.id)
 
-			if len(fake.gotFindOne) != 1 {
-				t.Fatalf("FindOne called %d times, want 1", len(fake.gotFindOne))
-			}
-			filter, ok := fake.gotFindOne[0].(bson.M)
-			if !ok {
-				t.Fatalf("filter type = %T, want bson.M", fake.gotFindOne[0])
-			}
-			assertFilter(t, filter, bson.M{"resident_id": tt.id, "deleteat": time.Time{}})
-
 			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) || got != nil {
-					t.Fatalf("got (%v, %v), want (nil, %v)", got, err, tt.wantErr)
-				}
-				if errors.Is(tt.wantErr, entities.ErrEntityNotFound) && !strings.Contains(err.Error(), tt.id) {
-					t.Errorf("error = %q, want it to contain the resident id", err)
+				require.ErrorIs(t, err, tt.wantErr)
+				assert.Nil(t, got)
+				if errors.Is(tt.wantErr, entities.ErrEntityNotFound) {
+					assert.Contains(t, err.Error(), tt.id)
 				}
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got.ResidentID != tt.id || got.Name != tt.wantName || got.Type != tt.wantType {
-				t.Errorf("got %+v, want id %q name %q type %q", got, tt.id, tt.wantName, tt.wantType)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.id, got.ResidentID)
+			assert.Equal(t, tt.wantName, got.Name)
+			assert.Equal(t, tt.wantType, got.Type)
 		})
 	}
 }
 
 func TestResidentRepositoryFindMany(t *testing.T) {
 	boom := errors.New("boom")
-	docs := []interface{}{
-		models.Resident{ID: "r1", ResidentID: "r1", Apartment: "101", Phone: "5511", Name: "Ana", Type: "resident"},
+	docs := []any{
+		models.Resident{ID: "r1", ResidentID: "r1", Apartment: "101", Phone: "5511", Name: "Ana", Type: "resident-primary"},
 		models.Resident{ID: "other-101", ResidentID: "other-101", Apartment: "101", Name: "Outro", Type: "other"},
 		models.Resident{ID: "r3", ResidentID: "r3", Apartment: "101", Phone: "5511", Name: "Legacy"},
 	}
@@ -359,7 +413,7 @@ func TestResidentRepositoryFindMany(t *testing.T) {
 	tests := []struct {
 		name       string
 		call       func(*MongoDBResidentRepository) ([]*entities.Resident, error)
-		docs       []interface{}
+		docs       []any
 		findErr    error
 		wantFilter bson.M
 		wantErr    error
@@ -372,23 +426,23 @@ func TestResidentRepositoryFindMany(t *testing.T) {
 			},
 			docs:       docs,
 			wantFilter: bson.M{"apartment": "101", "deleteat": time.Time{}},
-			wantTypes:  []entities.ResidentType{entities.ResidentTypeResident, entities.ResidentTypeOther, entities.ResidentTypeResident},
+			wantTypes:  []entities.ResidentType{entities.ResidentTypePrimary, entities.ResidentTypeOther, entities.ResidentTypeSecondary},
 		},
 		{
 			name: "find by phone",
 			call: func(r *MongoDBResidentRepository) ([]*entities.Resident, error) {
 				return r.FindByPhone(context.Background(), "5511")
 			},
-			docs:       []interface{}{docs[0]},
+			docs:       []any{docs[0]},
 			wantFilter: bson.M{"phone": "5511", "deleteat": time.Time{}},
-			wantTypes:  []entities.ResidentType{entities.ResidentTypeResident},
+			wantTypes:  []entities.ResidentType{entities.ResidentTypePrimary},
 		},
 		{
 			name: "no results returns empty slice",
 			call: func(r *MongoDBResidentRepository) ([]*entities.Resident, error) {
 				return r.FindByPhone(context.Background(), "000")
 			},
-			docs:       []interface{}{},
+			docs:       []any{},
 			wantFilter: bson.M{"phone": "000", "deleteat": time.Time{}},
 			wantTypes:  []entities.ResidentType{},
 		},
@@ -405,33 +459,24 @@ func TestResidentRepositoryFindMany(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fake := &fakeCollection{findDocs: tt.docs, findErr: tt.findErr}
-			repo := newResidentRepo(t, fake)
+			repo, coll := newResidentRepo(t)
+			call := coll.EXPECT().Find(mock.Anything, tt.wantFilter).Once()
+			if tt.findErr != nil {
+				call.Return(nil, tt.findErr)
+			} else {
+				call.Return(cursor(t, tt.docs), nil)
+			}
 
 			got, err := tt.call(repo)
 
-			if len(fake.gotFind) != 1 {
-				t.Fatalf("Find called %d times, want 1", len(fake.gotFind))
-			}
-			filter, ok := fake.gotFind[0].(bson.M)
-			if !ok {
-				t.Fatalf("filter type = %T, want bson.M", fake.gotFind[0])
-			}
-			assertFilter(t, filter, tt.wantFilter)
-
-			if !errors.Is(err, tt.wantErr) {
-				t.Fatalf("error = %v, want %v", err, tt.wantErr)
-			}
+			require.ErrorIs(t, err, tt.wantErr)
 			if tt.wantErr != nil {
 				return
 			}
-			if got == nil || len(got) != len(tt.wantTypes) {
-				t.Fatalf("got %d residents (%v), want %d", len(got), got, len(tt.wantTypes))
-			}
+			require.NotNil(t, got)
+			require.Len(t, got, len(tt.wantTypes))
 			for i, r := range got {
-				if r.Type != tt.wantTypes[i] {
-					t.Errorf("resident %d type = %q, want %q", i, r.Type, tt.wantTypes[i])
-				}
+				assert.Equalf(t, tt.wantTypes[i], r.Type, "resident %d type", i)
 			}
 		})
 	}

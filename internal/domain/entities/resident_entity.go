@@ -9,6 +9,7 @@ type Resident struct {
 	Name       string       `bson:"name"`
 	Phone      string       `bson:"phone"`
 	Type       ResidentType `bson:"type"`
+	Status     ResidentStatus
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 	DeleteAt   time.Time
@@ -16,4 +17,8 @@ type Resident struct {
 
 func (r *Resident) IsOther() bool {
 	return r.Type == ResidentTypeOther
+}
+
+func (r *Resident) IsPrimary() bool {
+	return r.Type == ResidentTypePrimary
 }

@@ -40,7 +40,7 @@ func processMessage(ctx context.Context, app *Application, kafkaMessage *watermi
 
 	pubsubMessage, err := appWatermill.ConvertWatermillToPubsub(kafkaMessage, nil)
 	if err != nil {
-		return permanent(fmt.Errorf("convert kafka message: %w", err))
+		return pkgEvents.Permanent(fmt.Errorf("convert kafka message: %w", err))
 	}
 
 	messageLogger := app.Logger.With(
@@ -62,8 +62,6 @@ func processMessage(ctx context.Context, app *Application, kafkaMessage *watermi
 	return nil
 }
 
-// sourceMessageID identifies the consumed message across redeliveries: the producer's
-// message UUID when present, otherwise its topic/partition/offset.
 func sourceMessageID(topic string, kafkaMessage *watermillMessage.Message) string {
 	if kafkaMessage.UUID != "" {
 		return kafkaMessage.UUID
@@ -78,10 +76,12 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	app, err := initializeApplication(ctx)
+	app, err := initializeApplication()
 	if err != nil {
 		log.Fatalf("failed to initialize application: %v", err)
 	}
+
+	ctx = app.Logger.AddToContext(ctx, app.Logger)
 
 	app.Logger.Info("Application initialized",
 		"version", version,
@@ -107,6 +107,7 @@ func main() {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	shutdownCtx = app.Logger.AddToContext(shutdownCtx, app.Logger)
 
 	if err := shutdownApplication(shutdownCtx, app); err != nil {
 		app.Logger.Error("Application shutdown finished with errors", "error", err.Error())
@@ -116,7 +117,7 @@ func main() {
 	app.Logger.Info("Application shutdown completed")
 }
 
-func initializeApplication(ctx context.Context) (*Application, error) {
+func initializeApplication() (*Application, error) {
 	appConfigs, err := config.NewConfig()
 	if err != nil {
 		return nil, fmt.Errorf("load configs: %w", err)
@@ -132,8 +133,6 @@ func initializeApplication(ctx context.Context) (*Application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create logger: %w", err)
 	}
-
-	ctx = logger.AddToContext(ctx, logger)
 
 	serviceProviders, err := providers.NewServiceProviders(appConfigs.Envs, logger)
 	if err != nil {
@@ -229,8 +228,6 @@ func runApplication(ctx context.Context, app *Application) error {
 	}
 }
 
-// handleMessage processes the message with retries and acks it on success or once it is
-// parked in the DLQ; it only nacks when the DLQ publish fails or on shutdown, so no message is lost.
 func handleMessage(ctx context.Context, app *Application, msg *watermillMessage.Message) {
 	policy := newRetryPolicy(app.Configs.SubscriberConfigs.RetryConfig)
 
@@ -257,7 +254,7 @@ func handleMessage(ctx context.Context, app *Application, msg *watermillMessage.
 	app.Logger.Error("Failed to process Kafka message, sending to DLQ",
 		"error", err.Error(),
 		"message_uuid", msg.UUID,
-		"permanent", isPermanent(err),
+		"permanent", pkgEvents.IsPermanent(err),
 		"dlq_topic", app.Configs.Envs.Pubsub.DLQTopic,
 	)
 
@@ -274,12 +271,7 @@ func handleMessage(ctx context.Context, app *Application, msg *watermillMessage.
 }
 
 func publishToDLQ(ctx context.Context, app *Application, msg *watermillMessage.Message, processErr error) error {
-	var convertErr error
-	if isPermanent(processErr) {
-		convertErr, processErr = processErr, nil
-	}
-
-	dlqMessage := appWatermill.BuildRawDLQMessage(msg, processErr, convertErr)
+	dlqMessage := appWatermill.BuildRawDLQMessage(msg, processErr)
 	originalTopic := app.Configs.SubscriberConfigs.Topic
 	dlqMessage.Headers.OriginalTopic = &originalTopic
 
