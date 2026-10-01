@@ -35,8 +35,8 @@ func TestReadEnvsDefaults(t *testing.T) {
 	assert.Equal(t, "8081", envs.HTTP.Port)
 	assert.Equal(t, "log", envs.Notifier.Provider)
 	assert.Equal(t, "55", envs.Notifier.DefaultCountryCode)
-	assert.Equal(t, "delivery-subscriber.dlq", envs.Pubsub.DLQTopic)
-	assert.Empty(t, envs.Pubsub.DeliveryBrokersHosts)
+	assert.Equal(t, "delivery-subscriber.dlq", envs.Kafka.DLQTopic)
+	assert.Empty(t, envs.Kafka.DeliveryBrokersHosts)
 	assert.Equal(t, "delivery-subscriber", AppName)
 	assert.False(t, envs.IsProduction())
 }
@@ -52,7 +52,7 @@ func TestReadEnvsFromEnvironment(t *testing.T) {
 	envs, err := ReadEnvs()
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"kafka-1:9092", "kafka-2:9092"}, envs.Pubsub.DeliveryBrokersHosts)
+	assert.Equal(t, []string{"kafka-1:9092", "kafka-2:9092"}, envs.Kafka.DeliveryBrokersHosts)
 	assert.Equal(t, "mongodb://localhost", envs.MongoDB.URI)
 	assert.Equal(t, "9000", envs.HTTP.Port)
 	assert.Equal(t, "custom-app", AppName)

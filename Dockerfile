@@ -12,8 +12,8 @@ RUN go mod download
 # Copiar o código fonte
 COPY . .
 
-# Binário a compilar: entregador (consumer Kafka) ou api (HTTP)
-ARG APP=entregador
+# Binário a compilar: api (HTTP + push do Pub/Sub) ou worker (só no modo Kafka)
+ARG APP=api
 
 # Compilar a aplicação
 RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/${APP}
@@ -21,15 +21,20 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/${APP}
 # Imagem final
 FROM alpine:latest
 
-WORKDIR /root/
+# Certificados para TLS (MongoDB Atlas, Twilio, Google APIs) e timezone
+RUN apk add --no-cache ca-certificates tzdata && adduser -D -u 10001 app
+
+WORKDIR /app
 
 # Copiar o binário compilado
 COPY --from=builder /app/main .
 
-# Configs dos consumers, passadas via -config
+# Config do consumer do worker, passada via -config
 COPY --from=builder /app/config/subscriber/deployments ./config/subscriber/deployments
 
-# Expor a porta que sua aplicação usa
+USER app
+
+# O Cloud Run injeta PORT (padrão 8080); localmente vale HTTP_PORT (padrão 8081)
 EXPOSE 8080
 
 # Comando para executar a aplicação

@@ -1,3 +1,4 @@
+// API HTTP: residents, delivery registration/pickup and queries.
 package main
 
 import (
@@ -10,8 +11,7 @@ import (
 	"time"
 
 	"github.com/Moreira-Henrique-Pedro/entregador/config"
-	httpEntrypoint "github.com/Moreira-Henrique-Pedro/entregador/internal/infrastrucuture/entrypoints/http"
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/infrastrucuture/providers"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/providers"
 	appLogger "github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
 )
 
@@ -31,21 +31,14 @@ func main() {
 		log.Fatalf("failed to create logger: %v", err)
 	}
 
-	readerProviders, err := providers.NewReaderProviders(envs)
+	api, err := providers.NewAPI(envs, logger)
 	if err != nil {
-		log.Fatalf("failed to create reader providers: %v", err)
+		log.Fatalf("failed to initialize api: %v", err)
 	}
-
-	residentHandler := httpEntrypoint.NewResidentHandler(
-		readerProviders.GetResidentsByApartment,
-		readerProviders.GetResidentsByPhone,
-	)
-
-	deliveryHandler := httpEntrypoint.NewDeliveryHandler(readerProviders.GetDeliveriesByApartment)
 
 	server := &http.Server{
 		Addr:              ":" + envs.HTTP.Port,
-		Handler:           httpEntrypoint.NewRouter(residentHandler, deliveryHandler, logger),
+		Handler:           api.Handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -71,8 +64,8 @@ func main() {
 		logger.Error("Failed to shutdown HTTP server", "error", err.Error())
 	}
 
-	if err := readerProviders.Close(shutdownCtx); err != nil {
-		logger.Error("Failed to close reader providers", "error", err.Error())
+	if err := api.Close(shutdownCtx); err != nil {
+		logger.Error("Failed to close api dependencies", "error", err.Error())
 	}
 
 	logger.Info("Application shutdown completed")

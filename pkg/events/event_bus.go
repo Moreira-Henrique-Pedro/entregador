@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/pubsub"
 	"github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
+	"github.com/Moreira-Henrique-Pedro/entregador/pkg/pubsub"
 )
 
 type ContextKey string

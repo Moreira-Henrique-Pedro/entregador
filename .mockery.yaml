@@ -9,23 +9,30 @@ disable-version-string: true
 resolve-type-alias: false
 issue-845-fix: true
 packages:
-  github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories:
+  # Driving ports (use cases), mocked by the inbound adapters' tests.
+  github.com/Moreira-Henrique-Pedro/entregador/internal/application/ports/in:
     interfaces:
-      ResidentRepositoryPort:
-      DeliveryRepositoryPort:
-  github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories/client:
+      CreateResident:
+      UpdateResident:
+      DeleteResident:
+      ListResidents:
+      RegisterDelivery:
+      DeleteDelivery:
+      ListDeliveries:
+      NotifyDelivery:
+  # Driven ports, mocked by the use cases' tests.
+  github.com/Moreira-Henrique-Pedro/entregador/internal/application/ports/out:
+    interfaces:
+      ResidentRepository:
+      DeliveryRepository:
+      Notifier:
+      NotificationScheduler:
+  github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/out/mongodb/client:
     interfaces:
       MongoClientCollectionPort:
-  github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/notifier:
-    interfaces:
-      NotifierPort:
-  github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/pubsub:
+  github.com/Moreira-Henrique-Pedro/entregador/pkg/pubsub:
     interfaces:
       MessagePublisher:
-  github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/readers:
-    interfaces:
-      ResidentsReaderPort:
-      DeliveriesReaderPort:
   # External interface: its mock lives next to the adapter that uses it.
   github.com/ThreeDotsLabs/watermill/message:
     config:
