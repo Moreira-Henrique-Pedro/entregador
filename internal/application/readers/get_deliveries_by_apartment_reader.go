@@ -20,7 +20,6 @@ func NewGetDeliveriesByApartment(deliveryRepository interfaces.DeliveryRepositor
 	}
 }
 
-// Handle returns the apartment deliveries, newest first; a nil status means any status.
 func (r *GetDeliveriesByApartment) Handle(ctx context.Context, apartment string, status *entities.DeliveryStatus) ([]*entities.Delivery, error) {
 	logger := logger.GetLoggerFromContext(ctx)
 	logger.Info("Getting deliveries by apartment", "apartment", apartment)

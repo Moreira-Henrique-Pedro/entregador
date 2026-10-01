@@ -112,7 +112,6 @@ func TestResidentRoundTrip(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			model := ResidentFromEntity(&tt.resident)
 
-			// Through BSON too, since that is what Mongo stores.
 			raw, err := bson.Marshal(model)
 			if err != nil {
 				t.Fatalf("marshal: %v", err)
@@ -137,7 +136,7 @@ func TestResidentBSONFieldNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	// The repository filters and $set documents rely on these field names.
+
 	for _, key := range []string{"_id", "resident_id", "apartment", "name", "phone", "type", "createdat", "updatedat", "deleteat"} {
 		t.Run(key, func(t *testing.T) {
 			if _, err := bson.Raw(raw).LookupErr(key); err != nil {

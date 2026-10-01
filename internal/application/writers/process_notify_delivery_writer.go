@@ -12,8 +12,7 @@ import (
 	"github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
 )
 
-// defaultPackageLabel fills the package type in the message when the delivery has none,
-// since WhatsApp templates do not accept empty variables.
+// WhatsApp templates do not accept empty variables.
 const defaultPackageLabel = "encomenda"
 
 type ProcessNotifyDelivery struct {
@@ -72,7 +71,7 @@ func (w *ProcessNotifyDelivery) Handle(ctx context.Context, command *commands.Pr
 	for _, resident := range recipients {
 		err := w.notifier.Send(ctx, buildNotification(command.NotificationType, resident, delivery))
 		if errors.Is(err, notifier.ErrInvalidRecipient) {
-			// A bad phone must not block the other residents nor retry forever.
+
 			logger.Warn("Resident phone rejected by the provider", "resident_id", resident.ResidentID, "error", err.Error())
 			continue
 		}
@@ -118,9 +117,6 @@ func (w *ProcessNotifyDelivery) markAsNotified(ctx context.Context, deliveryID s
 	return w.deliveryRepository.MarkArrivalAsNotified(ctx, deliveryID)
 }
 
-// resolveRecipients returns the delivery resident, or the apartment's primary
-// resident when the delivery belongs to the "other" resident, keeping only
-// those with a phone.
 func (w *ProcessNotifyDelivery) resolveRecipients(ctx context.Context, delivery *entities.Delivery) ([]*entities.Resident, error) {
 	var candidates []*entities.Resident
 
@@ -149,9 +145,6 @@ func (w *ProcessNotifyDelivery) resolveRecipients(ctx context.Context, delivery 
 	return recipients, nil
 }
 
-// findPrimary returns the apartment's primary resident, promoting one first when
-// the apartment has none (residents stored before primary existed, or a promotion
-// interrupted by a failure). It returns nil when the apartment has no resident.
 func (w *ProcessNotifyDelivery) findPrimary(ctx context.Context, apartment string) (*entities.Resident, error) {
 	primary, err := w.findPrimaryInApartment(ctx, apartment)
 	if err != nil || primary != nil {
@@ -177,8 +170,7 @@ func (w *ProcessNotifyDelivery) findPrimaryInApartment(ctx context.Context, apar
 	return nil, nil
 }
 
-// buildNotification builds the message for the resident. Template variables, in order:
-// {{1}} resident name, {{2}} apartment, {{3}} package type.
+// Template variables: {{1}} resident name, {{2}} apartment, {{3}} package type.
 func buildNotification(notificationType notifier.NotificationType, resident *entities.Resident, delivery *entities.Delivery) notifier.Notification {
 	packageLabel := delivery.PackageType
 	if packageLabel == "" {

@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -9,18 +8,11 @@ import (
 	"testing"
 
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/readers/mocks"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
-
-type fakeReader struct {
-	residents []*entities.Resident
-	err       error
-	gotValue  string
-}
-
-func (f *fakeReader) Handle(_ context.Context, value string) ([]*entities.Resident, error) {
-	f.gotValue = value
-	return f.residents, f.err
-}
 
 func TestListResidents(t *testing.T) {
 	resident := &entities.Resident{
@@ -31,50 +23,51 @@ func TestListResidents(t *testing.T) {
 	tests := []struct {
 		name          string
 		query         string
-		byApartment   *fakeReader
-		byPhone       *fakeReader
-		wantStatus    int
-		wantCount     int
 		wantApartment string
 		wantPhone     string
+		readerOut     []*entities.Resident
+		readerErr     error
+		wantStatus    int
+		wantCount     int
 	}{
-		{name: "by apartment", query: "?apartment=101", byApartment: &fakeReader{residents: []*entities.Resident{resident}}, byPhone: &fakeReader{}, wantStatus: http.StatusOK, wantCount: 1, wantApartment: "101"},
-		{name: "by phone", query: "?phone=11999999999", byApartment: &fakeReader{}, byPhone: &fakeReader{residents: []*entities.Resident{resident}}, wantStatus: http.StatusOK, wantCount: 1, wantPhone: "11999999999"},
-		{name: "empty result returns empty list", query: "?apartment=999", byApartment: &fakeReader{}, byPhone: &fakeReader{}, wantStatus: http.StatusOK, wantCount: 0, wantApartment: "999"},
-		{name: "missing params", query: "", byApartment: &fakeReader{}, byPhone: &fakeReader{}, wantStatus: http.StatusBadRequest},
-		{name: "both params", query: "?apartment=101&phone=1", byApartment: &fakeReader{}, byPhone: &fakeReader{}, wantStatus: http.StatusBadRequest},
-		{name: "reader error", query: "?phone=1", byApartment: &fakeReader{}, byPhone: &fakeReader{err: errors.New("boom")}, wantStatus: http.StatusInternalServerError, wantPhone: "1"},
+		{name: "by apartment", query: "?apartment=101", wantApartment: "101", readerOut: []*entities.Resident{resident}, wantStatus: http.StatusOK, wantCount: 1},
+		{name: "by phone", query: "?phone=11999999999", wantPhone: "11999999999", readerOut: []*entities.Resident{resident}, wantStatus: http.StatusOK, wantCount: 1},
+		{name: "empty result returns empty list", query: "?apartment=999", wantApartment: "999", wantStatus: http.StatusOK, wantCount: 0},
+		{name: "missing params", query: "", wantStatus: http.StatusBadRequest},
+		{name: "both params", query: "?apartment=101&phone=1", wantStatus: http.StatusBadRequest},
+		{name: "reader error", query: "?phone=1", wantPhone: "1", readerErr: errors.New("boom"), wantStatus: http.StatusInternalServerError},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := NewResidentHandler(tt.byApartment, tt.byPhone)
+			byApartment := mocks.NewResidentsReaderPort(t)
+			byPhone := mocks.NewResidentsReaderPort(t)
+			if tt.wantApartment != "" {
+				byApartment.EXPECT().Handle(mock.Anything, tt.wantApartment).Return(tt.readerOut, tt.readerErr).Once()
+			}
+			if tt.wantPhone != "" {
+				byPhone.EXPECT().Handle(mock.Anything, tt.wantPhone).Return(tt.readerOut, tt.readerErr).Once()
+			}
+
 			rec := httptest.NewRecorder()
+			NewResidentHandler(byApartment, byPhone).ListResidents(rec, httptest.NewRequest(http.MethodGet, "/v1/residents"+tt.query, nil))
 
-			handler.ListResidents(rec, httptest.NewRequest(http.MethodGet, "/v1/residents"+tt.query, nil))
-
-			if rec.Code != tt.wantStatus {
-				t.Fatalf("status = %d, want %d (body: %s)", rec.Code, tt.wantStatus, rec.Body.String())
-			}
-			if tt.byApartment.gotValue != tt.wantApartment {
-				t.Errorf("apartment reader got %q, want %q", tt.byApartment.gotValue, tt.wantApartment)
-			}
-			if tt.byPhone.gotValue != tt.wantPhone {
-				t.Errorf("phone reader got %q, want %q", tt.byPhone.gotValue, tt.wantPhone)
-			}
+			require.Equal(t, tt.wantStatus, rec.Code, "body: %s", rec.Body.String())
 			if tt.wantStatus != http.StatusOK {
+				var body errorResponse
+				require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+				assert.NotEmpty(t, body.Error)
 				return
 			}
 
 			var body []residentResponse
-			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-				t.Fatalf("invalid json: %v", err)
-			}
-			if len(body) != tt.wantCount {
-				t.Errorf("got %d residents, want %d", len(body), tt.wantCount)
-			}
-			if tt.wantCount > 0 && (body[0].Type != "resident-primary" || body[0].Status != "created") {
-				t.Errorf("type/status = %q/%q, want resident-primary/created", body[0].Type, body[0].Status)
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+			require.Len(t, body, tt.wantCount)
+			if tt.wantCount > 0 {
+				assert.Equal(t, residentResponse{
+					ResidentID: "r1", Name: "Ana", Apartment: "101", Phone: "11999999999",
+					Type: "resident-primary", Status: "created",
+				}, body[0])
 			}
 		})
 	}

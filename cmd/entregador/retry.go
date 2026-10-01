@@ -25,9 +25,6 @@ func newRetryPolicy(cfg *subscriberConfig.RetryConfig) retryPolicy {
 	}
 }
 
-// run calls fn until it succeeds, returns a permanent error, the retries are
-// exhausted or ctx is done, waiting with exponential backoff between attempts.
-// It returns the last error.
 func (p retryPolicy) run(ctx context.Context, fn func() error, onRetry func(attempt int, err error, wait time.Duration)) error {
 	wait := p.initialInterval
 

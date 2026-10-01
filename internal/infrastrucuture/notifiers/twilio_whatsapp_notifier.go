@@ -22,15 +22,10 @@ const (
 )
 
 type TwilioConfig struct {
-	AccountSID string
-	AuthToken  string
-	// From is the WhatsApp sender in E.164, e.g. +14155238886.
-	From string
-	// ContentSIDs maps each notification type to an approved WhatsApp Content Template.
-	// Types without a template are sent as free-form Body, which WhatsApp only accepts
-	// inside the 24h customer service window (or in the Twilio sandbox).
-	ContentSIDs map[notifier.NotificationType]string
-	// DefaultCountryCode is prefixed to phones stored without one, e.g. "55".
+	AccountSID         string
+	AuthToken          string
+	From               string
+	ContentSIDs        map[notifier.NotificationType]string
 	DefaultCountryCode string
 	BaseURL            string
 }
@@ -138,9 +133,6 @@ func (n *TwilioWhatsAppNotifier) buildForm(to string, notification notifier.Noti
 	return form, nil
 }
 
-// twilioError classifies the failure: client errors about the recipient will fail again
-// on retry, while throttling, server errors and auth/config problems are returned as-is
-// so the message is retried and, if it keeps failing, parked in the DLQ.
 func twilioError(statusCode int, body []byte) error {
 	var apiErr twilioErrorResponse
 	_ = json.Unmarshal(body, &apiErr)
@@ -152,7 +144,6 @@ func twilioError(statusCode int, body []byte) error {
 	return err
 }
 
-// Twilio error codes about the "To" number: https://www.twilio.com/docs/api/errors
 func isRecipientErrorCode(code int) bool {
 	switch code {
 	case 21211, // invalid 'To' phone number
@@ -165,8 +156,6 @@ func isRecipientErrorCode(code int) bool {
 	return false
 }
 
-// normalizePhone returns the phone in E.164, prefixing the default country code
-// when the stored phone has only the national number (e.g. 11999999999).
 func normalizePhone(phone, defaultCountryCode string) (string, error) {
 	if phone == "" {
 		return "", errors.New("phone is empty")
@@ -191,7 +180,6 @@ func normalizePhone(phone, defaultCountryCode string) (string, error) {
 		return "+" + digits, nil
 	}
 
-	// National numbers: area code + 8 or 9 digits.
 	if len(digits) != 10 && len(digits) != 11 {
 		return "", fmt.Errorf("phone %q must have the area code and number", phone)
 	}

@@ -50,7 +50,7 @@ func (w *ProcessCreateDelivery) Handle(ctx context.Context, command *commands.Pr
 	}
 	if !hasResident {
 		logger.Warn("Rejecting delivery for apartment without residents", "command_id", command.CommandID, "apartment", command.Apartment)
-		// Retrying will not register a resident, so the command goes straight to the DLQ.
+
 		return pkgEvents.Permanent(fmt.Errorf("apartment %s: %w", command.Apartment, entities.ErrNoResidentInApartment))
 	}
 
@@ -66,8 +66,6 @@ func (w *ProcessCreateDelivery) Handle(ctx context.Context, command *commands.Pr
 
 	logger.Info("Delivery created", "delivery_id", delivery.DeliveryID, "apartment", delivery.Apartment, "resident_id", delivery.ResidentID)
 
-	// On failure the command is retried: the insert is deduplicated by id and the
-	// notification is published again, so the resident is still notified.
 	if err := publishNotifyDelivery(ctx, w.publisher, w.internalTopic, delivery.DeliveryID, notifier.NotificationTypeDeliveryArrived); err != nil {
 		return fmt.Errorf("failed to publish internal command ProcessNotifyDelivery: deliveryID=%s: %w", delivery.DeliveryID, err)
 	}
@@ -75,8 +73,6 @@ func (w *ProcessCreateDelivery) Handle(ctx context.Context, command *commands.Pr
 	return nil
 }
 
-// apartmentHasResident reports whether the apartment has a registered resident
-// besides its "other" resident.
 func (w *ProcessCreateDelivery) apartmentHasResident(ctx context.Context, apartment string) (bool, error) {
 	residents, err := w.residentRepository.FindByApartment(ctx, apartment)
 	if err != nil {
@@ -90,8 +86,6 @@ func (w *ProcessCreateDelivery) apartmentHasResident(ctx context.Context, apartm
 	return false, nil
 }
 
-// resolveRecipient returns the informed resident when it lives in the apartment,
-// otherwise the apartment's "other" resident, creating it if needed.
 func (w *ProcessCreateDelivery) resolveRecipient(ctx context.Context, command *commands.ProcessCreateDeliveryCommand) (string, error) {
 	logger := logger.GetLoggerFromContext(ctx)
 

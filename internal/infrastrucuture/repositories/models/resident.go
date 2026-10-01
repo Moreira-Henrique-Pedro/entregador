@@ -19,7 +19,7 @@ type Resident struct {
 	DeleteAt   time.Time
 }
 
-// legacyResidentType was stored before residents were split into primary and secondary.
+// Stored before residents were split into primary and secondary.
 const legacyResidentType = "resident"
 
 func ResidentFromEntity(resident *entities.Resident) *Resident {
@@ -48,8 +48,7 @@ func ResidentFromEntity(resident *entities.Resident) *Resident {
 }
 
 func (r *Resident) ToEntity() *entities.Resident {
-	// Residents stored without a type, or before primary/secondary existed, are
-	// secondary until EnsurePrimaryResident promotes one of them.
+	// Empty or legacy types are secondary until EnsurePrimaryResident promotes one.
 	residentType := entities.ResidentType(r.Type)
 	if residentType == "" || r.Type == legacyResidentType {
 		residentType = entities.ResidentTypeSecondary

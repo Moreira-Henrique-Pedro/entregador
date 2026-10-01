@@ -43,7 +43,7 @@ func NewMongoDBResidentRepository(ctx context.Context, client client.MongoClient
 func residentIndexes() []mongo.IndexModel {
 	return []mongo.IndexModel{
 		{Keys: bson.D{{Key: "resident_id", Value: 1}}, Options: options.Index().SetUnique(true)},
-		// FindByApartment / FindByPhone always filter out soft-deleted residents.
+
 		{Keys: bson.D{{Key: "apartment", Value: 1}, {Key: deleteAtField, Value: 1}}},
 		{Keys: bson.D{{Key: "phone", Value: 1}, {Key: deleteAtField, Value: 1}}},
 		// At most one active primary per apartment, even under concurrent promotions.
@@ -89,7 +89,7 @@ func (r *MongoDBResidentRepository) EnsureOtherResident(ctx context.Context, apa
 		bson.M{"$setOnInsert": model},
 		options.Update().SetUpsert(true),
 	)
-	// Two concurrent upserts may race on the unique index; the other one already created it.
+
 	if mongo.IsDuplicateKeyError(err) {
 		return nil
 	}
@@ -126,7 +126,7 @@ func (r *MongoDBResidentRepository) EnsurePrimaryResident(ctx context.Context, a
 		activeResidentFilter(bson.M{"resident_id": candidate.ResidentID}),
 		bson.M{"$set": bson.M{"type": string(entities.ResidentTypePrimary), updatedAtField: time.Now().UTC()}},
 	)
-	// A concurrent promotion already gave the apartment its primary.
+
 	if mongo.IsDuplicateKeyError(err) {
 		return nil
 	}
@@ -223,12 +223,10 @@ func residentNotFound(residentID string) error {
 	return fmt.Errorf("resident %s: %w", residentID, entities.ErrEntityNotFound)
 }
 
-// activeResidentFilter ignores soft-deleted residents (deleteat set).
 func activeResidentFilter(filter bson.M) bson.M {
 	return notDeletedFilter(filter)
 }
 
-// notDeletedFilter ignores soft-deleted documents (deleteat set).
 func notDeletedFilter(filter bson.M) bson.M {
 	filter[deleteAtField] = time.Time{}
 	return filter

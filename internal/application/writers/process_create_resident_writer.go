@@ -33,8 +33,6 @@ func (w *ProcessCreateResident) Handle(ctx context.Context, command *commands.Pr
 		return fmt.Errorf("failed to ensure other resident: apartment=%s: %w", command.Apartment, err)
 	}
 
-	// The resident is inserted as secondary; when the apartment has no primary yet, the
-	// oldest resident (this one, for the first of the apartment) is promoted.
 	if err := w.residentRepository.EnsurePrimaryResident(ctx, command.Apartment); err != nil {
 		return fmt.Errorf("failed to ensure primary resident: apartment=%s: %w", command.Apartment, err)
 	}

@@ -72,7 +72,6 @@ func BuildRawDLQMessage(msg *message.Message, processErr error) *pubsub.Message[
 	return pubsub.NewMessage[any](msg.Context(), headers, rawData)
 }
 
-// IsValidJSONPayload reports whether the message payload can be parsed as JSON.
 func IsValidJSONPayload(payload []byte) bool {
 	if len(payload) == 0 {
 		return false

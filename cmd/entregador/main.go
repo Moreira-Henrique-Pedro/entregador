@@ -62,8 +62,6 @@ func processMessage(ctx context.Context, app *Application, kafkaMessage *watermi
 	return nil
 }
 
-// sourceMessageID identifies the consumed message across redeliveries: the producer's
-// message UUID when present, otherwise its topic/partition/offset.
 func sourceMessageID(topic string, kafkaMessage *watermillMessage.Message) string {
 	if kafkaMessage.UUID != "" {
 		return kafkaMessage.UUID
@@ -230,8 +228,6 @@ func runApplication(ctx context.Context, app *Application) error {
 	}
 }
 
-// handleMessage processes the message with retries and acks it on success or once it is
-// parked in the DLQ; it only nacks when the DLQ publish fails or on shutdown, so no message is lost.
 func handleMessage(ctx context.Context, app *Application, msg *watermillMessage.Message) {
 	policy := newRetryPolicy(app.Configs.SubscriberConfigs.RetryConfig)
 

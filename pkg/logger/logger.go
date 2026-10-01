@@ -32,10 +32,8 @@ func getBaseLoggerFromContext(ctx context.Context) Logger {
 	return NewNoopLogger()
 }
 
-// NoopLogger is a logger that does nothing - implements Logger interface
 type NoopLogger struct{}
 
-// NewNoopLogger creates a new no-operation logger
 func NewNoopLogger() Logger {
 	return &NoopLogger{}
 }
@@ -45,27 +43,21 @@ func (n *NoopLogger) With(fields ...any) Logger {
 }
 
 func (n *NoopLogger) Info(message string, fields ...any) {
-	// No-op
 }
 
 func (n *NoopLogger) Warn(message string, fields ...any) {
-	// No-op
 }
 
 func (n *NoopLogger) Error(message string, fields ...any) {
-	// No-op
 }
 
 func (n *NoopLogger) Debug(message string, fields ...any) {
-	// No-op
 }
 
 func (n *NoopLogger) Critical(message string, fields ...any) {
-	// No-op
 }
 
 func (n *NoopLogger) Fatal(message string, fields ...any) {
-	// No-op - Note: real Fatal would exit, but noop doesn't
 }
 
 func (n *NoopLogger) WithFields(fields map[string]any) Logger {

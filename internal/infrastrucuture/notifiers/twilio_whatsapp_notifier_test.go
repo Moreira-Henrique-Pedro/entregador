@@ -22,7 +22,6 @@ type capturedRequest struct {
 	form        url.Values
 }
 
-// newTwilioServer fakes the Twilio Messages API, replying with status and body.
 func newTwilioServer(t *testing.T, status int, body string) (*httptest.Server, *capturedRequest) {
 	t.Helper()
 	captured := &capturedRequest{}

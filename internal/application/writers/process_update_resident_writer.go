@@ -47,8 +47,7 @@ func (w *ProcessUpdateResident) Handle(ctx context.Context, command *commands.Pr
 	movingApartment := command.Apartment != "" && command.Apartment != previousApartment
 
 	resident := w.buildResidentEntity(command)
-	// A primary that moves out leaves the old apartment's primary and arrives as
-	// secondary, so the new apartment keeps its current primary.
+	// A moving primary arrives as secondary: the new apartment may already have one (unique index).
 	if movingApartment && current.IsPrimary() {
 		resident.Type = entities.ResidentTypeSecondary
 	}

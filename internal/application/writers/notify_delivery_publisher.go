@@ -9,9 +9,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// publishNotifyDelivery publishes the internal command that notifies the residents.
-// The command id is derived from the delivery and the notification type, so retries
-// publish the same command.
 func publishNotifyDelivery(
 	ctx context.Context,
 	publisher pubsub.MessagePublisher[any],

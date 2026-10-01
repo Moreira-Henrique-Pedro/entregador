@@ -4,13 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/application/commands"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/notifier"
+	notifiermocks "github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/notifier/mocks"
+	repomocks "github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories/mocks"
 )
 
 var (
@@ -20,20 +25,13 @@ var (
 	errFailed = errors.New("mongo down")
 )
 
-// notifyResidents returns fresh residents for each case, since EnsurePrimaryResident
-// changes their type. Apartment 101: ana is primary, bia and caio (no phone) secondary.
-func notifyResidents() []*entities.Resident {
-	return []*entities.Resident{
-		{ResidentID: "ana", Name: "Ana", Apartment: "101", Phone: "111", Type: entities.ResidentTypePrimary},
-		{ResidentID: "bia", Name: "Bia", Apartment: "101", Phone: "222", Type: entities.ResidentTypeSecondary},
-		{ResidentID: "caio", Name: "Caio", Apartment: "101", Type: entities.ResidentTypeSecondary},
-		{ResidentID: "davi", Name: "Davi", Apartment: "202", Phone: "333", Type: entities.ResidentTypePrimary},
-		entities.NewOtherResident("101"),
-	}
-}
-
 func TestProcessNotifyDelivery(t *testing.T) {
-	now := time.Now()
+
+	ana := &entities.Resident{ResidentID: "ana", Name: "Ana", Apartment: "101", Phone: "111", Type: entities.ResidentTypePrimary}
+	bia := &entities.Resident{ResidentID: "bia", Name: "Bia", Apartment: "101", Phone: "222", Type: entities.ResidentTypeSecondary}
+	caio := &entities.Resident{ResidentID: "caio", Name: "Caio", Apartment: "101", Type: entities.ResidentTypeSecondary}
+	apartment101 := []*entities.Resident{ana, bia, caio, other101}
+
 	pendingFor := func(residentID string) *entities.Delivery {
 		return &entities.Delivery{DeliveryID: "d1", Apartment: "101", ResidentID: residentID, PackageType: "caixa", Status: entities.DeliveryStatusPending}
 	}
@@ -43,75 +41,106 @@ func TestProcessNotifyDelivery(t *testing.T) {
 		return delivery
 	}
 
+	type mocks struct {
+		residents *repomocks.ResidentRepositoryPort
+		sender    *notifiermocks.NotifierPort
+	}
+
+	expectSend := func(m mocks, notificationType notifier.NotificationType, resident *entities.Resident, delivery *entities.Delivery, err error) {
+		m.sender.EXPECT().Send(mock.Anything, buildNotification(notificationType, resident, delivery)).Return(err).Once()
+	}
+
 	tests := []struct {
 		name             string
 		notificationType notifier.NotificationType
 		delivery         *entities.Delivery
-		residents        []*entities.Resident // defaults to notifyResidents()
-		residentFindErr  error
-		apartmentErr     error
-		ensurePrimaryErr error
-		notifierErrs     map[string]error
+		deliveryErr      error
+		setup            func(m mocks, delivery *entities.Delivery)
+		wantMarked       string
 		markErr          error
 		wantErr          error
-		wantPhones       []string
-		wantMarked       string // "arrival", "pickup" or "" for not marked
 	}{
 		{
 			name:             "arrival notifies the delivery resident",
 			notificationType: arrived,
 			delivery:         pendingFor("ana"),
-			wantPhones:       []string{"111"},
-			wantMarked:       "arrival",
+			setup: func(m mocks, delivery *entities.Delivery) {
+				m.residents.EXPECT().FindByResidentID(mock.Anything, "ana").Return(ana, nil).Once()
+				expectSend(m, arrived, ana, delivery, nil)
+			},
+			wantMarked: "arrival",
 		},
 		{
 			name:             "pickup notifies the delivery resident",
 			notificationType: pickedUp,
 			delivery:         deletedFor("ana"),
-			wantPhones:       []string{"111"},
-			wantMarked:       "pickup",
+			setup: func(m mocks, delivery *entities.Delivery) {
+				m.residents.EXPECT().FindByResidentID(mock.Anything, "ana").Return(ana, nil).Once()
+				expectSend(m, pickedUp, ana, delivery, nil)
+			},
+			wantMarked: "pickup",
 		},
 		{
 			name:             "other delivery notifies only the apartment primary",
 			notificationType: arrived,
 			delivery:         pendingFor(other101.ResidentID),
-			wantPhones:       []string{"111"},
-			wantMarked:       "arrival",
+			setup: func(m mocks, delivery *entities.Delivery) {
+				m.residents.EXPECT().FindByResidentID(mock.Anything, other101.ResidentID).Return(other101, nil).Once()
+				m.residents.EXPECT().FindByApartment(mock.Anything, "101").Return(apartment101, nil).Once()
+				expectSend(m, arrived, ana, delivery, nil)
+			},
+			wantMarked: "arrival",
 		},
 		{
 			name:             "other pickup notifies only the apartment primary",
 			notificationType: pickedUp,
 			delivery:         deletedFor(other101.ResidentID),
-			wantPhones:       []string{"111"},
-			wantMarked:       "pickup",
+			setup: func(m mocks, delivery *entities.Delivery) {
+				m.residents.EXPECT().FindByResidentID(mock.Anything, other101.ResidentID).Return(other101, nil).Once()
+				m.residents.EXPECT().FindByApartment(mock.Anything, "101").Return(apartment101, nil).Once()
+				expectSend(m, pickedUp, ana, delivery, nil)
+			},
+			wantMarked: "pickup",
 		},
 		{
 			name:             "deleted delivery resident falls back to the apartment primary",
 			notificationType: arrived,
 			delivery:         pendingFor("gone"),
-			wantPhones:       []string{"111"},
-			wantMarked:       "arrival",
+			setup: func(m mocks, delivery *entities.Delivery) {
+				m.residents.EXPECT().FindByResidentID(mock.Anything, "gone").Return(nil, entities.ErrEntityNotFound).Once()
+				m.residents.EXPECT().FindByApartment(mock.Anything, "101").Return(apartment101, nil).Once()
+				expectSend(m, arrived, ana, delivery, nil)
+			},
+			wantMarked: "arrival",
 		},
 		{
 			name:             "apartment without primary promotes the oldest resident and notifies it",
 			notificationType: arrived,
 			delivery:         pendingFor(other101.ResidentID),
-			residents: []*entities.Resident{
-				{ResidentID: "ana", Apartment: "101", Phone: "111", Type: entities.ResidentTypeSecondary, CreatedAt: now},
-				{ResidentID: "bia", Apartment: "101", Phone: "222", Type: entities.ResidentTypeSecondary, CreatedAt: now.Add(-time.Hour)},
-				entities.NewOtherResident("101"),
+			setup: func(m mocks, delivery *entities.Delivery) {
+				anaSecondary := &entities.Resident{ResidentID: "ana", Name: "Ana", Apartment: "101", Phone: "111", Type: entities.ResidentTypeSecondary}
+				biaPrimary := &entities.Resident{ResidentID: "bia", Name: "Bia", Apartment: "101", Phone: "222", Type: entities.ResidentTypePrimary}
+				m.residents.EXPECT().FindByResidentID(mock.Anything, other101.ResidentID).Return(other101, nil).Once()
+				mock.InOrder(
+					m.residents.EXPECT().FindByApartment(mock.Anything, "101").
+						Return([]*entities.Resident{anaSecondary, bia, other101}, nil).Once(),
+					m.residents.EXPECT().EnsurePrimaryResident(mock.Anything, "101").Return(nil).Once(),
+					m.residents.EXPECT().FindByApartment(mock.Anything, "101").
+						Return([]*entities.Resident{anaSecondary, biaPrimary, other101}, nil).Once(),
+				)
+				expectSend(m, arrived, biaPrimary, delivery, nil)
 			},
-			wantPhones: []string{"222"},
 			wantMarked: "arrival",
 		},
 		{
 			name:             "primary without phone leaves the other delivery without recipients",
 			notificationType: arrived,
 			delivery:         pendingFor(other101.ResidentID),
-			residents: []*entities.Resident{
-				{ResidentID: "caio", Apartment: "101", Type: entities.ResidentTypePrimary},
-				{ResidentID: "bia", Apartment: "101", Phone: "222", Type: entities.ResidentTypeSecondary},
-				entities.NewOtherResident("101"),
+			setup: func(m mocks, _ *entities.Delivery) {
+				caioPrimary := &entities.Resident{ResidentID: "caio", Name: "Caio", Apartment: "101", Type: entities.ResidentTypePrimary}
+				m.residents.EXPECT().FindByResidentID(mock.Anything, other101.ResidentID).Return(other101, nil).Once()
+				m.residents.EXPECT().FindByApartment(mock.Anything, "101").
+					Return([]*entities.Resident{caioPrimary, bia, other101}, nil).Once()
 			},
 			wantMarked: "arrival",
 		},
@@ -119,39 +148,53 @@ func TestProcessNotifyDelivery(t *testing.T) {
 			name:             "apartment with only the other resident has no recipients",
 			notificationType: arrived,
 			delivery:         pendingFor(other101.ResidentID),
-			residents:        []*entities.Resident{entities.NewOtherResident("101")},
-			wantMarked:       "arrival",
+			setup: func(m mocks, _ *entities.Delivery) {
+				m.residents.EXPECT().FindByResidentID(mock.Anything, other101.ResidentID).Return(other101, nil).Once()
+				m.residents.EXPECT().FindByApartment(mock.Anything, "101").Return([]*entities.Resident{other101}, nil).Twice()
+				m.residents.EXPECT().EnsurePrimaryResident(mock.Anything, "101").Return(nil).Once()
+			},
+			wantMarked: "arrival",
 		},
 		{
 			name:             "ensure primary error is returned",
 			notificationType: arrived,
 			delivery:         pendingFor(other101.ResidentID),
-			residents: []*entities.Resident{
-				{ResidentID: "bia", Apartment: "101", Phone: "222", Type: entities.ResidentTypeSecondary},
-				entities.NewOtherResident("101"),
+			setup: func(m mocks, _ *entities.Delivery) {
+				m.residents.EXPECT().FindByResidentID(mock.Anything, other101.ResidentID).Return(other101, nil).Once()
+				m.residents.EXPECT().FindByApartment(mock.Anything, "101").Return([]*entities.Resident{bia, other101}, nil).Once()
+				m.residents.EXPECT().EnsurePrimaryResident(mock.Anything, "101").Return(errFailed).Once()
 			},
-			ensurePrimaryErr: errFailed,
-			wantErr:          errFailed,
+			wantErr: errFailed,
 		},
 		{
 			name:             "resident without phone is marked as notified without sending",
 			notificationType: arrived,
 			delivery:         pendingFor("caio"),
-			wantMarked:       "arrival",
+			setup: func(m mocks, _ *entities.Delivery) {
+				m.residents.EXPECT().FindByResidentID(mock.Anything, "caio").Return(caio, nil).Once()
+			},
+			wantMarked: "arrival",
 		},
 		{
 			name:             "invalid recipient is skipped and the delivery is marked as notified",
 			notificationType: arrived,
 			delivery:         pendingFor(other101.ResidentID),
-			notifierErrs:     map[string]error{"111": fmt.Errorf("twilio: %w", notifier.ErrInvalidRecipient)},
-			wantMarked:       "arrival",
+			setup: func(m mocks, delivery *entities.Delivery) {
+				m.residents.EXPECT().FindByResidentID(mock.Anything, other101.ResidentID).Return(other101, nil).Once()
+				m.residents.EXPECT().FindByApartment(mock.Anything, "101").Return(apartment101, nil).Once()
+				expectSend(m, arrived, ana, delivery, fmt.Errorf("twilio: %w", notifier.ErrInvalidRecipient))
+			},
+			wantMarked: "arrival",
 		},
 		{
 			name:             "provider failure is returned and not marked so it is retried",
 			notificationType: arrived,
 			delivery:         pendingFor("ana"),
-			notifierErrs:     map[string]error{"111": errFailed},
-			wantErr:          errFailed,
+			setup: func(m mocks, delivery *entities.Delivery) {
+				m.residents.EXPECT().FindByResidentID(mock.Anything, "ana").Return(ana, nil).Once()
+				expectSend(m, arrived, ana, delivery, errFailed)
+			},
+			wantErr: errFailed,
 		},
 		{
 			name:             "arrival already notified is skipped",
@@ -174,83 +217,83 @@ func TestProcessNotifyDelivery(t *testing.T) {
 			delivery:         pendingFor("ana"),
 		},
 		{
+
 			name:             "invalid notification type is discarded",
 			notificationType: "sms_marketing",
-			delivery:         pendingFor("ana"),
 		},
 		{
 			name:             "unknown delivery is ignored",
 			notificationType: arrived,
+			deliveryErr:      entities.ErrEntityNotFound,
+		},
+		{
+			name:             "delivery lookup error is returned",
+			notificationType: arrived,
+			deliveryErr:      errFailed,
+			wantErr:          errFailed,
 		},
 		{
 			name:             "resident lookup error is returned",
 			notificationType: arrived,
 			delivery:         pendingFor("ana"),
-			residentFindErr:  errFailed,
-			wantErr:          errFailed,
+			setup: func(m mocks, _ *entities.Delivery) {
+				m.residents.EXPECT().FindByResidentID(mock.Anything, "ana").Return(nil, errFailed).Once()
+			},
+			wantErr: errFailed,
 		},
 		{
 			name:             "apartment lookup error is returned",
 			notificationType: arrived,
 			delivery:         pendingFor(other101.ResidentID),
-			apartmentErr:     errFailed,
-			wantErr:          errFailed,
+			setup: func(m mocks, _ *entities.Delivery) {
+				m.residents.EXPECT().FindByResidentID(mock.Anything, other101.ResidentID).Return(other101, nil).Once()
+				m.residents.EXPECT().FindByApartment(mock.Anything, "101").Return(nil, errFailed).Once()
+			},
+			wantErr: errFailed,
 		},
 		{
 			name:             "mark as notified error is returned",
 			notificationType: arrived,
 			delivery:         pendingFor("ana"),
-			markErr:          errFailed,
-			wantErr:          errFailed,
-			wantPhones:       []string{"111"},
+			setup: func(m mocks, delivery *entities.Delivery) {
+				m.residents.EXPECT().FindByResidentID(mock.Anything, "ana").Return(ana, nil).Once()
+				expectSend(m, arrived, ana, delivery, nil)
+			},
+			wantMarked: "arrival",
+			markErr:    errFailed,
+			wantErr:    errFailed,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			deliveries := newFakeDeliveryRepository()
-			if tt.delivery != nil {
-				deliveries = newFakeDeliveryRepository(tt.delivery)
+			deliveries := repomocks.NewDeliveryRepositoryPort(t)
+			m := mocks{
+				residents: repomocks.NewResidentRepositoryPort(t),
+				sender:    notifiermocks.NewNotifierPort(t),
 			}
-			deliveries.markNotifiedErr = tt.markErr
-			fixture := tt.residents
-			if fixture == nil {
-				fixture = notifyResidents()
+			if tt.delivery != nil || tt.deliveryErr != nil {
+				deliveries.EXPECT().FindByDeliveryID(mock.Anything, "d1").Return(tt.delivery, tt.deliveryErr).Once()
 			}
-			residents := newFakeResidentRepository(fixture...)
-			residents.findErr = tt.residentFindErr
-			residents.findApartmentErr = tt.apartmentErr
-			residents.ensurePrimaryErr = tt.ensurePrimaryErr
-			sender := &fakeNotifier{errByPhone: tt.notifierErrs}
+			if tt.setup != nil {
+				tt.setup(m, tt.delivery)
+			}
+			switch tt.wantMarked {
+			case "arrival":
+				deliveries.EXPECT().MarkArrivalAsNotified(mock.Anything, "d1").Return(tt.markErr).Once()
+			case "pickup":
+				deliveries.EXPECT().MarkPickupAsNotified(mock.Anything, "d1").Return(tt.markErr).Once()
+			}
 
-			err := NewProcessNotifyDelivery(deliveries, residents, sender).Handle(context.Background(), &commands.ProcessNotifyDeliveryCommand{
+			err := NewProcessNotifyDelivery(deliveries, m.residents, m.sender).Handle(context.Background(), &commands.ProcessNotifyDeliveryCommand{
 				DeliveryID:       "d1",
 				NotificationType: tt.notificationType,
 			})
 
-			if !errors.Is(err, tt.wantErr) || (tt.wantErr == nil && err != nil) {
-				t.Fatalf("err = %v, want %v", err, tt.wantErr)
-			}
-			if phones := slices.Sorted(slices.Values(sender.phones())); !equalStrings(phones, tt.wantPhones) {
-				t.Errorf("notified phones = %v, want %v", phones, tt.wantPhones)
-			}
-			for _, notification := range sender.sent {
-				if notification.Type != tt.notificationType {
-					t.Errorf("notification type = %q, want %q", notification.Type, tt.notificationType)
-				}
-			}
-
-			gotMarked := ""
-			switch {
-			case len(deliveries.arrivalNotifiedIDs) == 1 && len(deliveries.pickupNotifiedIDs) == 0:
-				gotMarked = "arrival"
-			case len(deliveries.pickupNotifiedIDs) == 1 && len(deliveries.arrivalNotifiedIDs) == 0:
-				gotMarked = "pickup"
-			case len(deliveries.arrivalNotifiedIDs)+len(deliveries.pickupNotifiedIDs) > 0:
-				gotMarked = "both"
-			}
-			if gotMarked != tt.wantMarked {
-				t.Errorf("marked = %q, want %q", gotMarked, tt.wantMarked)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -300,15 +343,10 @@ func TestBuildNotification(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			notification := buildNotification(tt.notificationType, resident, tt.delivery)
 
-			if notification.Type != tt.notificationType || notification.Phone != "111" {
-				t.Errorf("notification = %+v, want type %s to 111", notification, tt.notificationType)
-			}
-			if notification.Body != tt.wantBody {
-				t.Errorf("body = %q, want %q", notification.Body, tt.wantBody)
-			}
-			if !equalStrings(notification.Variables, tt.wantVariables) {
-				t.Errorf("variables = %v, want %v", notification.Variables, tt.wantVariables)
-			}
+			assert.Equal(t, tt.notificationType, notification.Type)
+			assert.Equal(t, "111", notification.Phone)
+			assert.Equal(t, tt.wantBody, notification.Body)
+			assert.Equal(t, tt.wantVariables, notification.Variables)
 		})
 	}
 }

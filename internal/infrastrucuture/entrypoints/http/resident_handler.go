@@ -1,25 +1,20 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"time"
 
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/readers"
 	"github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
 )
 
-type residentReader interface {
-	Handle(ctx context.Context, value string) ([]*entities.Resident, error)
-}
-
 type ResidentHandler struct {
-	getResidentsByApartment residentReader
-	getResidentsByPhone     residentReader
+	getResidentsByApartment readers.ResidentsReaderPort
+	getResidentsByPhone     readers.ResidentsReaderPort
 }
 
-func NewResidentHandler(getResidentsByApartment, getResidentsByPhone residentReader) *ResidentHandler {
+func NewResidentHandler(getResidentsByApartment, getResidentsByPhone readers.ResidentsReaderPort) *ResidentHandler {
 	return &ResidentHandler{
 		getResidentsByApartment: getResidentsByApartment,
 		getResidentsByPhone:     getResidentsByPhone,
@@ -41,12 +36,11 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
-// ListResidents handles GET /v1/residents?apartment={apartment} or GET /v1/residents?phone={phone}.
 func (h *ResidentHandler) ListResidents(w http.ResponseWriter, r *http.Request) {
 	apartment := r.URL.Query().Get("apartment")
 	phone := r.URL.Query().Get("phone")
 
-	var reader residentReader
+	var reader readers.ResidentsReaderPort
 	var value string
 	switch {
 	case apartment != "" && phone != "":
