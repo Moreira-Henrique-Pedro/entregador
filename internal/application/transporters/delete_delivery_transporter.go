@@ -31,7 +31,7 @@ func NewDeleteDeliveryTransporter(
 func (t *DeleteDeliveryTransporter) Handle(ctx context.Context, event *events.DeleteDelivery) error {
 	logger := logger.GetLoggerFromContext(ctx)
 
-	logger.Info("Publishing DeleteDelivery event to topic %s", t.internalTopic)
+	logger.Info("Publishing DeleteDelivery event", "internal_topic", t.internalTopic)
 
 	command := t.buildInternalCommand(ctx, event)
 

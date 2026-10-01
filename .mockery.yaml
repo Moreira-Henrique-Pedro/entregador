@@ -1,0 +1,34 @@
+# Generates testify mocks for the ports: `mockery` (or `make mocks`).
+# Each mock goes to a mocks/ folder next to its interface.
+with-expecter: true
+dir: "{{.InterfaceDir}}/mocks"
+outpkg: mocks
+mockname: "{{.InterfaceName}}"
+filename: "{{.InterfaceName | snakecase}}.go"
+disable-version-string: true
+resolve-type-alias: false
+issue-845-fix: true
+packages:
+  github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories:
+    interfaces:
+      ResidentRepositoryPort:
+      DeliveryRepositoryPort:
+  github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories/client:
+    interfaces:
+      MongoClientCollectionPort:
+  github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/notifier:
+    interfaces:
+      NotifierPort:
+  github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/pubsub:
+    interfaces:
+      MessagePublisher:
+  github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/readers:
+    interfaces:
+      ResidentsReaderPort:
+      DeliveriesReaderPort:
+  # External interface: its mock lives next to the adapter that uses it.
+  github.com/ThreeDotsLabs/watermill/message:
+    config:
+      dir: pkg/watermill/mocks
+    interfaces:
+      Publisher:

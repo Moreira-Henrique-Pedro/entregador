@@ -22,7 +22,7 @@ func NewGetResidentsByApartment(residentRepository interfaces.ResidentRepository
 
 func (r *GetResidentsByApartment) Handle(ctx context.Context, apartment string) ([]*entities.Resident, error) {
 	logger := logger.GetLoggerFromContext(ctx)
-	logger.Info("Getting residents by apartment: Apartment=%s", apartment)
+	logger.Info("Getting residents by apartment", "apartment", apartment)
 
 	if apartment == "" {
 		return nil, errors.New("apartment is required")

@@ -31,7 +31,7 @@ func NewUpdateResidentTransporter(
 func (t *UpdateResidentTransporter) Handle(ctx context.Context, event *events.UpdateResident) error {
 	logger := logger.GetLoggerFromContext(ctx)
 
-	logger.Info("Publishing UpdateResident event to topic %s", t.internalTopic)
+	logger.Info("Publishing UpdateResident event", "internal_topic", t.internalTopic)
 
 	command := t.buildInternalCommand(ctx, event)
 

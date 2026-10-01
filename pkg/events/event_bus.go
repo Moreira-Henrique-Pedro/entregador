@@ -99,7 +99,7 @@ func (e *EventBus) convertToBytes(data any, logger logger.Logger) ([]byte, error
 
 func (e *EventBus) validatePayloadType(payload any, handler *EventHandler[any], logger logger.Logger) error {
 	payloadValue := reflect.ValueOf(payload)
-	if payloadValue.Kind() == reflect.Ptr {
+	if payloadValue.Kind() == reflect.Pointer {
 		payloadValue = payloadValue.Elem()
 	}
 

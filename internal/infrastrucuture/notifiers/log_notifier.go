@@ -7,7 +7,6 @@ import (
 	"github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
 )
 
-// LogNotifier only logs the notification; used in development when no provider is configured.
 type LogNotifier struct{}
 
 func NewLogNotifier() notifier.NotifierPort {

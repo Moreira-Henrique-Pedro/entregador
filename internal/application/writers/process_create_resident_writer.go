@@ -22,7 +22,7 @@ func NewProcessCreateResident(residentRepository interfaces.ResidentRepositoryPo
 
 func (w *ProcessCreateResident) Handle(ctx context.Context, command *commands.ProcessCreateResidentCommand) error {
 	logger := logger.GetLoggerFromContext(ctx)
-	logger.Info("Processing ProcessCreateResident command: commandID=%s", command.CommandID)
+	logger.Info("Processing ProcessCreateResident command", "command_id", command.CommandID)
 
 	resident := w.buildResidentEntity(command)
 	if err := w.residentRepository.Insert(ctx, resident); err != nil {
@@ -33,7 +33,11 @@ func (w *ProcessCreateResident) Handle(ctx context.Context, command *commands.Pr
 		return fmt.Errorf("failed to ensure other resident: apartment=%s: %w", command.Apartment, err)
 	}
 
-	logger.Info("Resident created: Name=%s, Apartment=%s, Phone=%s", command.Name, command.Apartment, command.Phone)
+	if err := w.residentRepository.EnsurePrimaryResident(ctx, command.Apartment); err != nil {
+		return fmt.Errorf("failed to ensure primary resident: apartment=%s: %w", command.Apartment, err)
+	}
+
+	logger.Info("Resident created", "resident_id", resident.ResidentID, "apartment", command.Apartment)
 
 	return nil
 }
@@ -45,6 +49,7 @@ func (w *ProcessCreateResident) buildResidentEntity(command *commands.ProcessCre
 		Apartment:  command.Apartment,
 		Name:       command.Name,
 		Phone:      command.Phone,
-		Type:       entities.ResidentTypeResident,
+		Type:       entities.ResidentTypeSecondary,
+		Status:     entities.ResidentStatusCreated,
 	}
 }

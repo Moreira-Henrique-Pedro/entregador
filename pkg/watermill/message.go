@@ -51,7 +51,7 @@ func ConvertWatermillToPubsub(msg *message.Message, err *error) (*pubsub.Message
 	return convertedMessage, nil
 }
 
-func BuildRawDLQMessage(msg *message.Message, handlerErr, convertErr error) *pubsub.Message[any] {
+func BuildRawDLQMessage(msg *message.Message, processErr error) *pubsub.Message[any] {
 	headers := pubsub.Headers{
 		EventType: msg.Metadata.Get(pubsub.EventTypeHeader),
 		Key:       msg.Metadata.Get(pubsub.KeyHeader),
@@ -66,13 +66,12 @@ func BuildRawDLQMessage(msg *message.Message, handlerErr, convertErr error) *pub
 		"raw_payload_base64": base64.StdEncoding.EncodeToString(msg.Payload),
 		"raw_payload_string": string(msg.Payload),
 		"message_uuid":       msg.UUID,
-		"error":              fmt.Sprintf("%v (payload convert error: %v)", handlerErr, convertErr),
+		"error":              fmt.Sprint(processErr),
 	}
 
 	return pubsub.NewMessage[any](msg.Context(), headers, rawData)
 }
 
-// IsValidJSONPayload reports whether the message payload can be parsed as JSON.
 func IsValidJSONPayload(payload []byte) bool {
 	if len(payload) == 0 {
 		return false

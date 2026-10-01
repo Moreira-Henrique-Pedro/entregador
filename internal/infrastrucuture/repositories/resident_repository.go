@@ -25,6 +25,8 @@ const (
 	pickupNotifiedAtField  = "pickupnotifiedat"
 )
 
+const primaryPerApartmentIndex = "apartment_primary_unique"
+
 type MongoDBResidentRepository struct {
 	collection client.MongoClientCollectionPort
 }
@@ -41,9 +43,17 @@ func NewMongoDBResidentRepository(ctx context.Context, client client.MongoClient
 func residentIndexes() []mongo.IndexModel {
 	return []mongo.IndexModel{
 		{Keys: bson.D{{Key: "resident_id", Value: 1}}, Options: options.Index().SetUnique(true)},
-		// FindByApartment / FindByPhone always filter out soft-deleted residents.
+
 		{Keys: bson.D{{Key: "apartment", Value: 1}, {Key: deleteAtField, Value: 1}}},
 		{Keys: bson.D{{Key: "phone", Value: 1}, {Key: deleteAtField, Value: 1}}},
+		// At most one active primary per apartment, even under concurrent promotions.
+		{
+			Keys: bson.D{{Key: "apartment", Value: 1}},
+			Options: options.Index().
+				SetName(primaryPerApartmentIndex).
+				SetUnique(true).
+				SetPartialFilterExpression(bson.M{"type": string(entities.ResidentTypePrimary), deleteAtField: time.Time{}}),
+		},
 	}
 }
 
@@ -61,7 +71,7 @@ func (r *MongoDBResidentRepository) Insert(ctx context.Context, resident *entiti
 	_, err := r.collection.InsertOne(ctx, model)
 	if mongo.IsDuplicateKeyError(err) {
 		logger := logger.GetLoggerFromContext(ctx)
-		logger.Warn("Duplicate key error while inserting resident", model.ResidentID, "error", err)
+		logger.Warn("Duplicate key error while inserting resident", "resident_id", model.ResidentID, "error", err.Error())
 		return nil
 	}
 	return err
@@ -79,7 +89,44 @@ func (r *MongoDBResidentRepository) EnsureOtherResident(ctx context.Context, apa
 		bson.M{"$setOnInsert": model},
 		options.Update().SetUpsert(true),
 	)
-	// Two concurrent upserts may race on the unique index; the other one already created it.
+
+	if mongo.IsDuplicateKeyError(err) {
+		return nil
+	}
+	return err
+}
+
+func (r *MongoDBResidentRepository) EnsurePrimaryResident(ctx context.Context, apartment string) error {
+	err := r.collection.FindOne(ctx, activeResidentFilter(bson.M{
+		"apartment": apartment,
+		"type":      string(entities.ResidentTypePrimary),
+	})).Err()
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, mongo.ErrNoDocuments) {
+		return err
+	}
+
+	var candidate models.Resident
+	err = r.collection.FindOne(
+		ctx,
+		activeResidentFilter(bson.M{"apartment": apartment, "type": bson.M{"$ne": string(entities.ResidentTypeOther)}}),
+		options.FindOne().SetSort(bson.D{{Key: createdAtField, Value: 1}, {Key: "resident_id", Value: 1}}),
+	).Decode(&candidate)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	_, err = r.collection.UpdateOne(
+		ctx,
+		activeResidentFilter(bson.M{"resident_id": candidate.ResidentID}),
+		bson.M{"$set": bson.M{"type": string(entities.ResidentTypePrimary), updatedAtField: time.Now().UTC()}},
+	)
+
 	if mongo.IsDuplicateKeyError(err) {
 		return nil
 	}
@@ -101,6 +148,9 @@ func (r *MongoDBResidentRepository) Update(ctx context.Context, resident *entiti
 	if resident.Phone != "" {
 		fields["phone"] = resident.Phone
 	}
+	if resident.Type != "" {
+		fields["type"] = string(resident.Type)
+	}
 
 	result, err := r.collection.UpdateOne(ctx, activeResidentFilter(bson.M{"resident_id": resident.ResidentID}), bson.M{"$set": fields})
 	if err != nil {
@@ -114,7 +164,11 @@ func (r *MongoDBResidentRepository) Update(ctx context.Context, resident *entiti
 
 func (r *MongoDBResidentRepository) DeleteByResidentID(ctx context.Context, residentID string) error {
 	now := time.Now().UTC()
-	update := bson.M{"$set": bson.M{deleteAtField: now, updatedAtField: now}}
+	update := bson.M{"$set": bson.M{
+		"status":       string(entities.ResidentStatusDeleted),
+		deleteAtField:  now,
+		updatedAtField: now,
+	}}
 
 	result, err := r.collection.UpdateOne(ctx, activeResidentFilter(bson.M{"resident_id": residentID}), update)
 	if err != nil {
@@ -169,12 +223,10 @@ func residentNotFound(residentID string) error {
 	return fmt.Errorf("resident %s: %w", residentID, entities.ErrEntityNotFound)
 }
 
-// activeResidentFilter ignores soft-deleted residents (deleteat set).
 func activeResidentFilter(filter bson.M) bson.M {
 	return notDeletedFilter(filter)
 }
 
-// notDeletedFilter ignores soft-deleted documents (deleteat set).
 func notDeletedFilter(filter bson.M) bson.M {
 	filter[deleteAtField] = time.Time{}
 	return filter

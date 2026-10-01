@@ -1,23 +1,19 @@
 package http
 
 import (
-	"context"
 	"net/http"
 	"time"
 
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/readers"
 	"github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
 )
 
-type deliveryReader interface {
-	Handle(ctx context.Context, apartment string, status *entities.DeliveryStatus) ([]*entities.Delivery, error)
-}
-
 type DeliveryHandler struct {
-	getDeliveriesByApartment deliveryReader
+	getDeliveriesByApartment readers.DeliveriesReaderPort
 }
 
-func NewDeliveryHandler(getDeliveriesByApartment deliveryReader) *DeliveryHandler {
+func NewDeliveryHandler(getDeliveriesByApartment readers.DeliveriesReaderPort) *DeliveryHandler {
 	return &DeliveryHandler{
 		getDeliveriesByApartment: getDeliveriesByApartment,
 	}
@@ -35,7 +31,6 @@ type deliveryResponse struct {
 	DeletedAt   *time.Time `json:"deleted_at,omitempty"`
 }
 
-// ListDeliveries handles GET /v1/deliveries?apartment={apartment}[&status={pending|deleted}].
 func (h *DeliveryHandler) ListDeliveries(w http.ResponseWriter, r *http.Request) {
 	apartment := r.URL.Query().Get("apartment")
 	if apartment == "" {

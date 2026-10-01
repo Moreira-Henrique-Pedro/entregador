@@ -12,8 +12,7 @@ import (
 	"github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
 )
 
-// defaultPackageLabel fills the package type in the message when the delivery has none,
-// since WhatsApp templates do not accept empty variables.
+// WhatsApp templates do not accept empty variables.
 const defaultPackageLabel = "encomenda"
 
 type ProcessNotifyDelivery struct {
@@ -65,14 +64,14 @@ func (w *ProcessNotifyDelivery) Handle(ctx context.Context, command *commands.Pr
 		return fmt.Errorf("failed to resolve notification recipients: deliveryID=%s: %w", delivery.DeliveryID, err)
 	}
 	if len(recipients) == 0 {
-		logger.Warn("No resident with phone to notify", "apartment", delivery.Apartment)
+		logger.Warn("No resident with phone to notify", "apartment", delivery.Apartment, "resident_id", delivery.ResidentID)
 	}
 
 	sent := 0
 	for _, resident := range recipients {
 		err := w.notifier.Send(ctx, buildNotification(command.NotificationType, resident, delivery))
 		if errors.Is(err, notifier.ErrInvalidRecipient) {
-			// A bad phone must not block the other residents nor retry forever.
+
 			logger.Warn("Resident phone rejected by the provider", "resident_id", resident.ResidentID, "error", err.Error())
 			continue
 		}
@@ -118,9 +117,6 @@ func (w *ProcessNotifyDelivery) markAsNotified(ctx context.Context, deliveryID s
 	return w.deliveryRepository.MarkArrivalAsNotified(ctx, deliveryID)
 }
 
-// resolveRecipients returns the delivery resident, or every resident of the
-// apartment when the delivery belongs to the "other" resident, keeping only
-// those with a phone.
 func (w *ProcessNotifyDelivery) resolveRecipients(ctx context.Context, delivery *entities.Delivery) ([]*entities.Resident, error) {
 	var candidates []*entities.Resident
 
@@ -129,9 +125,12 @@ func (w *ProcessNotifyDelivery) resolveRecipients(ctx context.Context, delivery 
 	case err == nil && !resident.IsOther():
 		candidates = []*entities.Resident{resident}
 	case err == nil, errors.Is(err, entities.ErrEntityNotFound):
-		candidates, err = w.residentRepository.FindByApartment(ctx, delivery.Apartment)
+		primary, err := w.findPrimary(ctx, delivery.Apartment)
 		if err != nil {
 			return nil, err
+		}
+		if primary != nil {
+			candidates = []*entities.Resident{primary}
 		}
 	default:
 		return nil, err
@@ -146,8 +145,32 @@ func (w *ProcessNotifyDelivery) resolveRecipients(ctx context.Context, delivery 
 	return recipients, nil
 }
 
-// buildNotification builds the message for the resident. Template variables, in order:
-// {{1}} resident name, {{2}} apartment, {{3}} package type.
+func (w *ProcessNotifyDelivery) findPrimary(ctx context.Context, apartment string) (*entities.Resident, error) {
+	primary, err := w.findPrimaryInApartment(ctx, apartment)
+	if err != nil || primary != nil {
+		return primary, err
+	}
+
+	if err := w.residentRepository.EnsurePrimaryResident(ctx, apartment); err != nil {
+		return nil, err
+	}
+	return w.findPrimaryInApartment(ctx, apartment)
+}
+
+func (w *ProcessNotifyDelivery) findPrimaryInApartment(ctx context.Context, apartment string) (*entities.Resident, error) {
+	residents, err := w.residentRepository.FindByApartment(ctx, apartment)
+	if err != nil {
+		return nil, err
+	}
+	for _, resident := range residents {
+		if resident.IsPrimary() {
+			return resident, nil
+		}
+	}
+	return nil, nil
+}
+
+// Template variables: {{1}} resident name, {{2}} apartment, {{3}} package type.
 func buildNotification(notificationType notifier.NotificationType, resident *entities.Resident, delivery *entities.Delivery) notifier.Notification {
 	packageLabel := delivery.PackageType
 	if packageLabel == "" {
