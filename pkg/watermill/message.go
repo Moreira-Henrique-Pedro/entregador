@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Moreira-Henrique-Pedro/entregador/pkg/pubsub"
 	appLogger "github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
+	"github.com/Moreira-Henrique-Pedro/entregador/pkg/pubsub"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 )

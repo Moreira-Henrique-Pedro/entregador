@@ -24,6 +24,15 @@ type routerDeps struct {
 	deleteDelivery   *mocks.DeleteDelivery
 }
 
+func TestRouter_WithoutPubSubPush(t *testing.T) {
+	router := NewRouter(Handlers{Residents: &ResidentHandler{}, Deliveries: &DeliveryHandler{}}, logger.NewNoopLogger())
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, PubSubPushPath, nil))
+
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
 func TestRouter(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -83,6 +92,7 @@ func TestRouter(t *testing.T) {
 			},
 			wantStatus: http.StatusNoContent,
 		},
+		{name: "pubsub push", method: http.MethodPost, path: PubSubPushPath, wantStatus: http.StatusAccepted},
 		{name: "method not allowed", method: http.MethodPut, path: "/v1/residents", wantStatus: http.StatusMethodNotAllowed},
 		{name: "unknown path", method: http.MethodGet, path: "/v1/unknown", wantStatus: http.StatusNotFound},
 	}
@@ -113,7 +123,8 @@ func TestRouter(t *testing.T) {
 				RegisterDelivery: d.registerDelivery,
 				DeleteDelivery:   d.deleteDelivery,
 			})
-			router := NewRouter(residentHandler, deliveryHandler, logger.NewNoopLogger())
+			push := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusAccepted) })
+			router := NewRouter(Handlers{Residents: residentHandler, Deliveries: deliveryHandler, PubSubPush: push}, logger.NewNoopLogger())
 
 			rec := httptest.NewRecorder()
 			router.ServeHTTP(rec, httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body)))

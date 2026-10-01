@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/Moreira-Henrique-Pedro/entregador/config"
-	bootstrap "github.com/Moreira-Henrique-Pedro/entregador/internal/providers"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/providers"
 	appLogger "github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
 )
 
@@ -31,7 +31,7 @@ func main() {
 		log.Fatalf("failed to create logger: %v", err)
 	}
 
-	api, err := bootstrap.NewAPI(envs, logger)
+	api, err := providers.NewAPI(envs, logger)
 	if err != nil {
 		log.Fatalf("failed to initialize api: %v", err)
 	}

@@ -1,4 +1,4 @@
-package bootstrap
+package providers
 
 import (
 	"context"
@@ -8,18 +8,16 @@ import (
 
 	"github.com/Moreira-Henrique-Pedro/entregador/config"
 	httpAdapter "github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/in/http"
-	kafkaOut "github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/out/kafka"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/application/usecases"
 	"github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
-	"github.com/Moreira-Henrique-Pedro/entregador/pkg/pubsub"
-	"github.com/Moreira-Henrique-Pedro/entregador/pkg/watermill"
 )
 
-// API wires the HTTP adapter: residents, delivery registration/pickup and queries.
+// API wires the HTTP adapter: residents, delivery registration/pickup and queries. With Pub/Sub
+// it also receives the push subscription and sends the notifications itself (single binary).
 type API struct {
 	Handler      http.Handler
 	repositories *repositories
-	publisher    pubsub.MessagePublisher[any]
+	messaging    *messaging
 }
 
 func NewAPI(env *config.Environment, log logger.Logger) (*API, error) {
@@ -28,13 +26,11 @@ func NewAPI(env *config.Environment, log logger.Logger) (*API, error) {
 		return nil, err
 	}
 
-	publisher, err := watermill.NewWatermillPublisher[any](env.Pubsub.DeliveryBrokersHosts, log)
+	messaging, err := newMessaging(env, log)
 	if err != nil {
 		_ = repos.close(context.Background())
-		return nil, fmt.Errorf("create kafka publisher: %w", err)
+		return nil, err
 	}
-
-	scheduler := kafkaOut.NewNotificationScheduler(publisher, env.Pubsub.CommandsTopic)
 
 	residentHandler := httpAdapter.NewResidentHandler(httpAdapter.ResidentHandlerDependencies{
 		ListResidentsByApartment: usecases.NewListResidentsByApartment(repos.residentRepository),
@@ -46,20 +42,42 @@ func NewAPI(env *config.Environment, log logger.Logger) (*API, error) {
 
 	deliveryHandler := httpAdapter.NewDeliveryHandler(httpAdapter.DeliveryHandlerDependencies{
 		ListDeliveries:   usecases.NewListDeliveriesByApartment(repos.deliveryRepository),
-		RegisterDelivery: usecases.NewRegisterDelivery(repos.deliveryRepository, repos.residentRepository, scheduler),
-		DeleteDelivery:   usecases.NewDeleteDelivery(repos.deliveryRepository, scheduler),
+		RegisterDelivery: usecases.NewRegisterDelivery(repos.deliveryRepository, repos.residentRepository, messaging.scheduler),
+		DeleteDelivery:   usecases.NewDeleteDelivery(repos.deliveryRepository, messaging.scheduler),
 	})
 
+	handlers := httpAdapter.Handlers{Residents: residentHandler, Deliveries: deliveryHandler}
+
+	if env.Messaging.Provider == config.MessagingProviderPubSub {
+		push, err := newPubSubPushHandler(env, log, repos)
+		if err != nil {
+			_ = messaging.close(context.Background())
+			_ = repos.close(context.Background())
+			return nil, err
+		}
+		handlers.PubSubPush = push
+	}
+
 	return &API{
-		Handler:      httpAdapter.NewRouter(residentHandler, deliveryHandler, log),
+		Handler:      httpAdapter.NewRouter(handlers, log),
 		repositories: repos,
-		publisher:    publisher,
+		messaging:    messaging,
 	}, nil
 }
 
 func (a *API) Close(ctx context.Context) error {
 	return errors.Join(
-		a.publisher.Close(ctx),
+		a.messaging.close(ctx),
 		a.repositories.close(ctx),
 	)
+}
+
+func newPubSubPushHandler(env *config.Environment, log logger.Logger, repos *repositories) (http.Handler, error) {
+	deliveryNotifier, err := newNotifier(env)
+	if err != nil {
+		return nil, fmt.Errorf("create notifier: %w", err)
+	}
+
+	notifyDelivery := usecases.NewNotifyDelivery(repos.deliveryRepository, repos.residentRepository, deliveryNotifier)
+	return newPushHandler(env, log, notifyDelivery)
 }

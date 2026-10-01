@@ -1,6 +1,6 @@
 # API HTTP
 
-A API roda em http://localhost:8081 (`HTTP_PORT`). Todas as respostas são JSON. Em caso de erro, o body é `{"error": "<motivo>"}`.
+A API roda em http://localhost:8081 (`HTTP_PORT`; no Cloud Run, a porta vem de `PORT`). Todas as respostas são JSON. Em caso de erro, o body é `{"error": "<motivo>"}`.
 
 ## Moradores
 
@@ -110,7 +110,7 @@ A remoção é lógica: o morador continua no MongoDB com `status: deleted` e `d
 
 ## Entregas
 
-O registro e a retirada são **síncronos**: a resposta só volta depois que o MongoDB foi atualizado. A **notificação** por WhatsApp é **assíncrona**: a API publica um comando no Kafka e o worker envia a mensagem logo depois. Por isso a resposta não espera o Twilio, e uma falha nele não afeta o cadastro.
+O registro e a retirada são **síncronos**: a resposta só volta depois que o MongoDB foi atualizado. A **notificação** por WhatsApp é **assíncrona**: a API publica um comando na fila (Pub/Sub, ou Kafka no modo alternativo) e a mensagem é enviada logo depois, fora do request. Veja [mensageria.md](mensageria.md). Por isso a resposta não espera o Twilio, e uma falha nele não afeta o cadastro.
 
 ### Formato da entrega
 
@@ -150,7 +150,7 @@ O que acontece:
    - morador definido: só ele recebe;
    - morador "Outro": só o **morador principal** (`resident-primary`) recebe. Se ele não tiver telefone, ninguém é notificado.
 
-> Se o Kafka estiver fora do ar, a entrega **é registrada mesmo assim** (`201`), mas a notificação de chegada não é enviada. O erro aparece no log da API (`Failed to schedule arrival notification`). Responder erro aqui faria o front tentar de novo e duplicar a entrega.
+> Se a fila (Pub/Sub ou Kafka) estiver fora do ar, a entrega **é registrada mesmo assim** (`201`), mas a notificação de chegada não é enviada. O erro aparece no log da API (`Failed to schedule arrival notification`). Responder erro aqui faria o front tentar de novo e duplicar a entrega.
 
 | Status | Quando |
 |--------|--------|
@@ -166,7 +166,7 @@ curl -X DELETE http://localhost:8081/v1/deliveries/<delivery_id>
 
 Marca a entrega como retirada (`status: deleted`) e agenda a notificação **delivery_picked_up**, com a mesma regra de destinatários do registro.
 
-A chamada é **idempotente**: retirar de novo uma entrega já retirada responde `204`. Se a notificação de retirada ainda não tiver sido enviada, ela é agendada outra vez. Então, se der `500` (por exemplo, com o Kafka fora), é seguro tentar de novo.
+A chamada é **idempotente**: retirar de novo uma entrega já retirada responde `204`. Se a notificação de retirada ainda não tiver sido enviada, ela é agendada outra vez. Então, se der `500` (por exemplo, com a fila fora do ar), é seguro tentar de novo.
 
 | Status | Quando |
 |--------|--------|
@@ -186,3 +186,7 @@ curl 'http://localhost:8081/v1/deliveries?apartment=101&status=pending'
 |--------|--------|
 | `200`  | Lista de entregas. |
 | `400`  | Sem `apartment`, ou `status` inválido. |
+
+## Rota interna
+
+`POST /internal/pubsub/notifications` recebe o push da subscription do Pub/Sub (só existe com `MESSAGING_PROVIDER=pubsub`). **Não é para o front**: ela exige o token OIDC assinado pelo Google. Veja [mensageria.md](mensageria.md).

@@ -1,4 +1,4 @@
-package bootstrap
+package providers
 
 import (
 	"context"
@@ -33,7 +33,7 @@ func NewWorker(cfg *config.AppConfigs, log logger.Logger) (*Worker, error) {
 		return nil, err
 	}
 
-	publisher, err := watermill.NewWatermillPublisher[any](cfg.Envs.Pubsub.DeliveryBrokersHosts, log)
+	publisher, err := watermill.NewWatermillPublisher[any](cfg.Envs.Kafka.DeliveryBrokersHosts, log)
 	if err != nil {
 		_ = repos.close(context.Background())
 		return nil, fmt.Errorf("create kafka publisher: %w", err)
@@ -53,7 +53,7 @@ func NewWorker(cfg *config.AppConfigs, log logger.Logger) (*Worker, error) {
 	sub := cfg.SubscriberConfigs
 	consumer := kafkaIn.NewConsumer(subscriber, publisher, registry, kafkaIn.ConsumerConfig{
 		Topic:    sub.Topic,
-		DLQTopic: cfg.Envs.Pubsub.DLQTopic,
+		DLQTopic: cfg.Envs.Kafka.DLQTopic,
 		Timeout:  sub.TimeOut.Duration(),
 		Retry: kafkaIn.RetryPolicy{
 			MaxRetries:      sub.RetryConfig.MaxRetries,
@@ -86,7 +86,7 @@ func newKafkaSubscriber(cfg *config.AppConfigs, log logger.Logger) (*watermillKa
 
 	return watermillKafka.NewSubscriber(
 		watermillKafka.SubscriberConfig{
-			Brokers:               cfg.Envs.Pubsub.DeliveryBrokersHosts,
+			Brokers:               cfg.Envs.Kafka.DeliveryBrokersHosts,
 			ConsumerGroup:         cfg.SubscriberConfigs.ConsumerGroup,
 			OverwriteSaramaConfig: saramaConfig,
 			Unmarshaler:           watermillKafka.DefaultMarshaler{},

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Moreira-Henrique-Pedro/entregador/config"
-	bootstrap "github.com/Moreira-Henrique-Pedro/entregador/internal/providers"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/providers"
 	appLogger "github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
 )
 
@@ -31,7 +31,7 @@ func main() {
 	}
 	ctx = logger.AddToContext(ctx, logger)
 
-	worker, err := bootstrap.NewWorker(cfg, logger)
+	worker, err := providers.NewWorker(cfg, logger)
 	if err != nil {
 		log.Fatalf("failed to initialize worker: %v", err)
 	}

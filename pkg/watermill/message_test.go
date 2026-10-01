@@ -6,8 +6,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Moreira-Henrique-Pedro/entregador/pkg/pubsub"
 	"github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
+	"github.com/Moreira-Henrique-Pedro/entregador/pkg/pubsub"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
