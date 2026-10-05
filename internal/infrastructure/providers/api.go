@@ -6,9 +6,14 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+
+	"github.com/Moreira-Henrique-Pedro/entregador/api"
 	"github.com/Moreira-Henrique-Pedro/entregador/config"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/application/controllers"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/application/usecases"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/services"
 	"github.com/Moreira-Henrique-Pedro/entregador/internal/infrastructure/server"
 	"github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
 )
@@ -51,38 +56,15 @@ func NewAPI(env *config.Environment, log logger.Logger) (*API, error) {
 		return nil, err
 	}
 
-	residents, deliveries := repos.residentRepository, repos.deliveryRepository
-	scheduler := pubSub.scheduler
-
-	handler := server.New(log, env.HTTP.CORSAllowedOrigins,
-		controllers.NewHealthController(),
-		controllers.NewResidentsController(controllers.ResidentsControllerDependencies{
-			Authorizer:               authorizer,
-			ListResidentsByApartment: usecases.NewListResidentsByApartment(residents),
-			ListResidentsByPhone:     usecases.NewListResidentsByPhone(residents),
-			CreateResident:           usecases.NewCreateResident(residents),
-			UpdateResident:           usecases.NewUpdateResident(residents),
-			DeleteResident:           usecases.NewDeleteResident(residents),
-		}),
-		controllers.NewDeliveriesController(controllers.DeliveriesControllerDependencies{
-			Authorizer:       authorizer,
-			ListDeliveries:   usecases.NewListDeliveries(deliveries, residents),
-			RegisterDelivery: usecases.NewRegisterDelivery(deliveries, residents, scheduler),
-			DeleteDelivery:   usecases.NewDeleteDelivery(deliveries, scheduler),
-		}),
-		controllers.NewApartmentsController(controllers.ApartmentsControllerDependencies{
-			Authorizer:     authorizer,
-			ListApartments: usecases.NewListApartments(residents),
-		}),
-		controllers.NewUsersController(controllers.UsersControllerDependencies{
-			Authorizer: authorizer,
-			CreateUser: usecases.NewCreateUser(identityProvider),
-		}),
-		controllers.NewNotificationsController(
-			usecases.NewNotifyDelivery(deliveries, residents, deliveryNotifier),
-			pushAuth,
-		),
-	)
+	handler := server.New(log, env.HTTP.CORSAllowedOrigins, newControllers(env, apiDependencies{
+		residents:  repos.residentRepository,
+		deliveries: repos.deliveryRepository,
+		scheduler:  pubSub.scheduler,
+		notifier:   deliveryNotifier,
+		users:      identityProvider,
+		authorizer: authorizer,
+		pushAuth:   pushAuth,
+	})...)
 
 	return &API{
 		Handler:      handler,
@@ -96,4 +78,51 @@ func (a *API) Close(ctx context.Context) error {
 		a.pubSub.close(),
 		a.repositories.close(ctx),
 	)
+}
+
+type apiDependencies struct {
+	residents  repositories.ResidentRepository
+	deliveries repositories.DeliveryRepository
+	scheduler  services.NotificationScheduler
+	notifier   services.Notifier
+	users      services.UserRegistry
+	authorizer controllers.Authorizer
+	pushAuth   gin.HandlerFunc
+}
+
+func newControllers(env *config.Environment, deps apiDependencies) []server.Controller {
+	routes := []server.Controller{
+		controllers.NewHealthController(),
+		controllers.NewResidentsController(controllers.ResidentsControllerDependencies{
+			Authorizer:               deps.authorizer,
+			ListResidentsByApartment: usecases.NewListResidentsByApartment(deps.residents),
+			ListResidentsByPhone:     usecases.NewListResidentsByPhone(deps.residents),
+			CreateResident:           usecases.NewCreateResident(deps.residents),
+			UpdateResident:           usecases.NewUpdateResident(deps.residents),
+			DeleteResident:           usecases.NewDeleteResident(deps.residents),
+		}),
+		controllers.NewDeliveriesController(controllers.DeliveriesControllerDependencies{
+			Authorizer:       deps.authorizer,
+			ListDeliveries:   usecases.NewListDeliveries(deps.deliveries, deps.residents),
+			RegisterDelivery: usecases.NewRegisterDelivery(deps.deliveries, deps.residents, deps.scheduler),
+			DeleteDelivery:   usecases.NewDeleteDelivery(deps.deliveries, deps.scheduler),
+		}),
+		controllers.NewApartmentsController(controllers.ApartmentsControllerDependencies{
+			Authorizer:     deps.authorizer,
+			ListApartments: usecases.NewListApartments(deps.residents),
+		}),
+		controllers.NewUsersController(controllers.UsersControllerDependencies{
+			Authorizer: deps.authorizer,
+			CreateUser: usecases.NewCreateUser(deps.users),
+		}),
+		controllers.NewNotificationsController(
+			usecases.NewNotifyDelivery(deps.deliveries, deps.residents, deps.notifier),
+			deps.pushAuth,
+		),
+	}
+
+	if !env.IsProduction() {
+		routes = append(routes, controllers.NewDocsController(api.OpenAPISpec))
+	}
+	return routes
 }

@@ -145,6 +145,8 @@ See [docs/deploy-cloud-run.md](docs/deploy-cloud-run.md): service accounts, secr
 
 ## API Endpoints
 
+The contract is [api/openapi.yaml](api/openapi.yaml). Outside production the API serves it with Swagger UI at http://localhost:8081/swagger (the raw spec at `/swagger/openapi.yaml`). A test (`TestOpenAPISpecMatchesRoutes`) fails when a route is added or removed without updating the spec, and the front generates its types from it (`npm run generate:api` in `entregador-front`).
+
 Details, payloads and status codes in [docs/api.md](docs/api.md). How notifications flow through Pub/Sub in [docs/mensageria.md](docs/mensageria.md).
 
 | Method   | Path                                         | Description |
