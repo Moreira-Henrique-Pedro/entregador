@@ -44,6 +44,26 @@ gcloud iam service-accounts add-iam-policy-binding $PUSH_SA \
   --member=serviceAccount:$PUBSUB_AGENT --role=roles/iam.serviceAccountTokenCreator
 ```
 
+### Firebase Auth
+
+1. No [console do Firebase](https://console.firebase.google.com), **adicione o Firebase ao projeto GCP** (`$PROJECT_ID`). Não é um projeto novo.
+2. Em **Authentication → Sign-in method**, habilite **E-mail/senha**. Não habilite telefone (SMS é cobrado por mensagem).
+3. Dê à API permissão para criar usuários e definir papéis (`POST /v1/users`). Validar tokens não precisa de permissão.
+
+```bash
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:$API_SA --role=roles/firebaseauth.admin
+```
+
+4. Crie o primeiro admin, da sua máquina, com as suas credenciais (`gcloud auth application-default login`) e **sem** o emulador:
+
+```bash
+FIREBASE_AUTH_EMULATOR_HOST= GCP_PROJECT_ID=$PROJECT_ID FIREBASE_PROJECT_ID=$PROJECT_ID \
+  ENV_FILE=/dev/null make create-admin EMAIL=sindico@condominio.com NAME="Síndico" PASSWORD='<senha forte>'
+```
+
+O front usa a configuração web do Firebase (Project settings → Your apps) para fazer login e envia o ID token no header `Authorization: Bearer`.
+
 ## 2. MongoDB Atlas
 
 1. Crie um cluster no [MongoDB Atlas](https://www.mongodb.com/atlas). O plano gratuito serve para começar; escolha uma região próxima (São Paulo, se disponível).
@@ -96,11 +116,11 @@ ENVIRONMENT: production
 APP_NAME: entregador-api
 LOG_LEVEL: info
 MONGODB_DATABASE: delivery
-MESSAGING_PROVIDER: pubsub
 GCP_PROJECT_ID: <seu-projeto>
 PUBSUB_NOTIFICATIONS_TOPIC: delivery-notifications
 PUBSUB_PUSH_SERVICE_ACCOUNT: entregador-pubsub-push@<seu-projeto>.iam.gserviceaccount.com
 PUBSUB_PUSH_AUDIENCE: pending
+FIREBASE_PROJECT_ID: <seu-projeto>
 NOTIFIER_PROVIDER: twilio
 TWILIO_ACCOUNT_SID: AC...
 TWILIO_WHATSAPP_FROM: "+55..."
@@ -136,7 +156,7 @@ curl $URL/health   # 200
 
 ## 6. Push subscription
 
-Aqui ficam o retry e o dead-letter. No modo Kafka, o código fazia isso; no Pub/Sub, é configuração da subscription.
+Aqui ficam o retry e o dead-letter: no Pub/Sub, eles são configuração da subscription, não código.
 
 ```bash
 gcloud pubsub subscriptions create delivery-notifications-push \

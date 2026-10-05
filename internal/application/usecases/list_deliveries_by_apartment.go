@@ -2,39 +2,33 @@ package usecases
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/application/ports/out"
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories"
 	"github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
 )
 
 type ListDeliveriesByApartment struct {
-	deliveryRepository out.DeliveryRepository
+	deliveryRepository repositories.DeliveryRepository
 }
 
-func NewListDeliveriesByApartment(deliveryRepository out.DeliveryRepository) *ListDeliveriesByApartment {
+func NewListDeliveriesByApartment(deliveryRepository repositories.DeliveryRepository) *ListDeliveriesByApartment {
 	return &ListDeliveriesByApartment{
 		deliveryRepository: deliveryRepository,
 	}
 }
 
-func (uc *ListDeliveriesByApartment) Execute(ctx context.Context, apartment string, status *domain.DeliveryStatus) ([]*domain.Delivery, error) {
-	logger := logger.GetLoggerFromContext(ctx)
-	logger.Info("Getting deliveries by apartment", "apartment", apartment)
+func (uc *ListDeliveriesByApartment) Execute(ctx context.Context, apartment string, status *entities.DeliveryStatus) ([]*entities.Delivery, error) {
+	if err := entities.ValidateDeliveryFilter(apartment, status); err != nil {
+		return nil, err
+	}
 
-	if apartment == "" {
-		return nil, errors.New("apartment is required")
-	}
-	if status != nil && !status.IsValid() {
-		return nil, fmt.Errorf("invalid delivery status: %s", *status)
-	}
+	logger.GetLoggerFromContext(ctx).Info("Getting deliveries by apartment", "apartment", apartment)
 
 	deliveries, err := uc.deliveryRepository.FindByApartment(ctx, apartment, status)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find deliveries by apartment: apartment=%s: %w", apartment, err)
 	}
-
 	return deliveries, nil
 }

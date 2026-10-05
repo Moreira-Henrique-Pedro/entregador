@@ -2,36 +2,33 @@ package usecases
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/application/ports/out"
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories"
 	"github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
 )
 
 type ListResidentsByPhone struct {
-	residentRepository out.ResidentRepository
+	residentRepository repositories.ResidentRepository
 }
 
-func NewListResidentsByPhone(residentRepository out.ResidentRepository) *ListResidentsByPhone {
+func NewListResidentsByPhone(residentRepository repositories.ResidentRepository) *ListResidentsByPhone {
 	return &ListResidentsByPhone{
 		residentRepository: residentRepository,
 	}
 }
 
-func (uc *ListResidentsByPhone) Execute(ctx context.Context, phone string) ([]*domain.Resident, error) {
-	logger := logger.GetLoggerFromContext(ctx)
-	logger.Info("Getting residents by phone", "phone", phone)
-
-	if phone == "" {
-		return nil, errors.New("phone is required")
+func (uc *ListResidentsByPhone) Execute(ctx context.Context, phone string) ([]*entities.Resident, error) {
+	if err := entities.ValidatePhone(phone); err != nil {
+		return nil, err
 	}
+
+	logger.GetLoggerFromContext(ctx).Info("Getting residents by phone", "phone", phone)
 
 	residents, err := uc.residentRepository.FindByPhone(ctx, phone)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find residents by phone: phone=%s: %w", phone, err)
 	}
-
 	return residents, nil
 }

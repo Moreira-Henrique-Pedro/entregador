@@ -2,16 +2,9 @@
 
 A mensageria é usada só **internamente**, para enviar as notificações de WhatsApp fora do request do front. Moradores e entregas são cadastrados pela [API HTTP](api.md). **Não é preciso publicar nada** no uso normal.
 
-São dois adapters, escolhidos por `MESSAGING_PROVIDER`:
+A fila é o **Google Cloud Pub/Sub**, tanto em produção (Cloud Run) quanto localmente (emulador). Há um processo só: a API publica a notificação e também a recebe de volta por push.
 
-| `MESSAGING_PROVIDER` | Quando usar | Processos |
-|----------------------|-------------|-----------|
-| `pubsub` (padrão)    | Produção no Cloud Run e desenvolvimento local | **Um só**: a API publica e também recebe o push do Pub/Sub |
-| `kafka`              | Se um dia precisar de Kafka (alto volume, ecossistema Kafka) | Dois: API (`cmd/api`) + worker (`cmd/worker`) |
-
-Os casos de uso são os mesmos nos dois modos. Só muda o adapter que implementa a porta `out.NotificationScheduler` e o adapter que entrega a mensagem ao caso de uso `NotifyDelivery`.
-
-## Pub/Sub (padrão)
+## Como funciona
 
 ```
  front                         api (Cloud Run)                                    Google Pub/Sub
@@ -85,8 +78,7 @@ Sem `PUBSUB_PUSH_AUDIENCE` e `PUBSUB_PUSH_SERVICE_ACCOUNT`, a API nem sobe. Desl
 
 | Variável | Padrão | Descrição |
 |----------|--------|-----------|
-| `MESSAGING_PROVIDER` | `pubsub` | `pubsub` ou `kafka`. |
-| `GCP_PROJECT_ID` | — | Projeto do Google Cloud. Obrigatório no modo `pubsub`. |
+| `GCP_PROJECT_ID` | — | Projeto do Google Cloud. Obrigatório. |
 | `PUBSUB_NOTIFICATIONS_TOPIC` | `delivery-notifications` | Tópico das notificações. |
 | `PUBSUB_PUSH_VERIFY_TOKEN` | `true` | Valida o token OIDC do push. |
 | `PUBSUB_PUSH_AUDIENCE` | — | Audience do token. Use a URL do endpoint de push. |
@@ -97,19 +89,11 @@ As credenciais vêm do *Application Default Credentials*: no Cloud Run, a servic
 
 Retry, backoff e dead-letter **não ficam no código**: são configuração da subscription. Veja [deploy-cloud-run.md](deploy-cloud-run.md).
 
-## Kafka (alternativo)
-
-Com `MESSAGING_PROVIDER=kafka`, a API publica o mesmo comando `NotifyDelivery` no tópico `delivery-internal.commands` (`INTERNAL_COMMANDS_TOPIC`). O **worker** (`cmd/worker`) o consome. Nesse modo, o próprio código cuida de:
-- retry com backoff exponencial, conforme o bloco `retry` de [config/subscriber/deployments/](../config/subscriber/deployments/);
-- envio para a DLQ `delivery-subscriber.dlq` (`DLQ_TOPIC`) quando as tentativas se esgotam, ou em erro permanente (body que não é JSON). A mensagem na DLQ traz o motivo em `data.error`, a original em `data.raw_payload_string` e o header `OriginalTopic`.
-
-No Kafka, a mensagem usa headers `EventType`/`Key`/`Source` e o body com envelope `{"data": {...}}`.
-
 ---
 
 ## Testando localmente
 
-### Modo Pub/Sub (padrão)
+### Subir o ambiente
 
 ```bash
 make up
@@ -120,10 +104,21 @@ make up
 | `mongodb`         | MongoDB em `localhost:27017`, sem autenticação |
 | `pubsub`          | Emulador do Pub/Sub em `localhost:8085` |
 | `pubsub-init`     | Cria o tópico e a push subscription apontando para a `api`, e encerra |
+| `pubsub-ui`       | UI do emulador ([NeoScript/pubsub-emulator-ui](https://github.com/NeoScript/pubsub-emulator-ui)) em http://localhost:7200 |
 | `api`             | API HTTP em http://localhost:8081 |
 
-- Os containers leem o seu `.env`, mas o compose força os valores de rede e do emulador (`MONGODB_URI`, `PUBSUB_EMULATOR_HOST`, `GCP_PROJECT_ID`, `PUBSUB_PUSH_VERIFY_TOKEN=false`).
-- Para não depender do Twilio, use `NOTIFIER_PROVIDER=log` no `.env`. A notificação sai só no log.
+- Localmente, as variáveis vêm do `.env.test` (`NOTIFIER_PROVIDER=log`: a notificação sai só no log, sem Twilio). Para usar outro arquivo: `make up ENV_FILE=.env`.
+- O compose força os valores de rede e do emulador (`MONGODB_URI`, `PUBSUB_EMULATOR_HOST`, `GCP_PROJECT_ID`, `PUBSUB_PUSH_VERIFY_TOKEN=false`).
+- Para enviar WhatsApp de verdade localmente, descomente o bloco do Twilio no `.env.test`.
+
+### Ver as mensagens na UI
+
+1. Abra http://localhost:7200 e troque o host para `http://localhost:8085` (a UI roda no navegador e chama o emulador direto).
+2. Adicione o projeto `entregador-local`.
+3. Crie uma **pull** subscription no tópico `delivery-notifications` (ex.: `debug-tap`). Não use a `delivery-notifications-push`: ela entrega para a API.
+4. Registre uma entrega e faça o pull na `debug-tap`.
+
+A subscription só recebe o que for publicado depois de ser criada, e some quando o emulador reinicia (ele não guarda estado).
 
 Para rodar a API **fora do Docker** (para depurar, por exemplo):
 
@@ -133,15 +128,6 @@ make api     # use os valores locais do .env.example
 ```
 
 > Diferenças do emulador: ele não tem backoff nem dead-letter, e reentrega uma mensagem com erro a cada ~1s até ela ser confirmada. Se ficar preso num loop, `make down` limpa tudo, porque o emulador guarda os dados só em memória.
-
-### Modo Kafka
-
-```bash
-# com MESSAGING_PROVIDER=kafka no .env
-make up-kafka
-```
-
-Sobe também `kafka` (`localhost:9094`), `kafka-ui` (http://localhost:8080), `kafka-init-topics` e `worker`.
 
 ### Roteiro do primeiro teste
 
@@ -162,28 +148,17 @@ curl -X POST http://localhost:8081/v1/deliveries \
 curl -X DELETE http://localhost:8081/v1/deliveries/<delivery_id>
 ```
 
-Logs: `docker compose logs -f api` (no modo Kafka, `docker compose logs -f api worker`).
+Logs: `docker compose logs -f api`.
 
 ### Reenviar uma notificação manualmente
 
 Útil para reprocessar algo que caiu no dead-letter. Se a notificação já tiver sido enviada, ela só é pulada.
 
-**Pub/Sub** (emulador; na GCP, use `gcloud pubsub topics publish`):
+No emulador (na GCP, use `gcloud pubsub topics publish`):
 
 ```bash
 curl -X POST localhost:8085/v1/projects/entregador-local/topics/delivery-notifications:publish \
   -H 'Content-Type: application/json' \
   -d "{\"messages\":[{\"attributes\":{\"EventType\":\"NotifyDelivery\"},
        \"data\":\"$(printf '{"delivery_id":"<delivery_id>","notification_type":"delivery_arrived"}' | base64 -w0)\"}]}"
-```
-
-**Kafka** (header e body separados por **TAB**):
-
-```bash
-docker compose exec -T kafka /opt/kafka/bin/kafka-console-producer.sh \
-  --bootstrap-server kafka:9092 \
-  --topic delivery-internal.commands \
-  --property parse.headers=true <<'EOF'
-EventType:NotifyDelivery	{"data":{"delivery_id":"<delivery_id>","notification_type":"delivery_arrived"}}
-EOF
 ```

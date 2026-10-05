@@ -4,47 +4,46 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/application/ports/out"
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories"
 	"github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
 )
 
 type DeleteResident struct {
-	residentRepository out.ResidentRepository
+	residentRepository repositories.ResidentRepository
 }
 
-func NewDeleteResident(residentRepository out.ResidentRepository) *DeleteResident {
+func NewDeleteResident(residentRepository repositories.ResidentRepository) *DeleteResident {
 	return &DeleteResident{
 		residentRepository: residentRepository,
 	}
 }
 
 func (uc *DeleteResident) Execute(ctx context.Context, residentID string) error {
-	if residentID == "" {
-		return fmt.Errorf("%w: resident_id is required", domain.ErrInvalidResident)
+	if err := entities.ValidateResidentID(residentID); err != nil {
+		return err
 	}
 
-	logger := logger.GetLoggerFromContext(ctx).With("resident_id", residentID)
-
-	current, err := uc.residentRepository.FindByResidentID(ctx, residentID)
+	current, err := findEditableResident(ctx, uc.residentRepository, residentID)
 	if err != nil {
-		return fmt.Errorf("failed to find resident: residentID=%s: %w", residentID, err)
-	}
-	if current.IsOther() {
-		return fmt.Errorf("resident %s: %w", residentID, domain.ErrOtherResidentReadOnly)
+		return err
 	}
 
-	if err := uc.residentRepository.DeleteByResidentID(ctx, residentID); err != nil {
-		return fmt.Errorf("failed to delete resident: residentID=%s: %w", residentID, err)
+	if err := uc.delete(ctx, current); err != nil {
+		return err
 	}
 
-	if current.IsPrimary() {
-		if err := uc.residentRepository.EnsurePrimaryResident(ctx, current.Apartment); err != nil {
-			return fmt.Errorf("failed to promote new primary resident: apartment=%s: %w", current.Apartment, err)
-		}
-	}
-
-	logger.Info("Resident deleted", "apartment", current.Apartment)
+	logger.GetLoggerFromContext(ctx).Info("Resident deleted", "resident_id", residentID, "apartment", current.Apartment)
 
 	return nil
+}
+
+func (uc *DeleteResident) delete(ctx context.Context, resident *entities.Resident) error {
+	if err := uc.residentRepository.DeleteByResidentID(ctx, resident.ResidentID); err != nil {
+		return fmt.Errorf("failed to delete resident: residentID=%s: %w", resident.ResidentID, err)
+	}
+	if !resident.IsPrimary() {
+		return nil
+	}
+	return ensurePrimaryResident(ctx, uc.residentRepository, resident.Apartment)
 }

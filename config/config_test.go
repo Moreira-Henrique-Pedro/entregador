@@ -1,9 +1,7 @@
 package config
 
 import (
-	"flag"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,7 +18,7 @@ func resetEnvs(t *testing.T) {
 
 func TestReadEnvsDefaults(t *testing.T) {
 	resetEnvs(t)
-	for _, key := range []string{"ENVIRONMENT", "LOG_LEVEL", "APP_NAME", "APP_VERSION", "HTTP_PORT", "DLQ_TOPIC", "DELIVERY_BROKER_HOSTS", "NOTIFIER_PROVIDER"} {
+	for _, key := range []string{"ENVIRONMENT", "LOG_LEVEL", "APP_NAME", "APP_VERSION", "HTTP_PORT", "PORT", "NOTIFIER_PROVIDER", "PUBSUB_NOTIFICATIONS_TOPIC", "PUBSUB_PUSH_VERIFY_TOKEN", "AUTH_ENABLED"} {
 		t.Setenv(key, "")
 		require.NoError(t, os.Unsetenv(key))
 	}
@@ -30,14 +28,15 @@ func TestReadEnvsDefaults(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, EnvironmentDevelopment, envs.App.Env)
 	assert.Equal(t, "info", envs.App.LogLevel)
-	assert.Equal(t, "delivery-subscriber", envs.App.Name)
+	assert.Equal(t, "entregador-api", envs.App.Name)
 	assert.Equal(t, "1.0.0", envs.App.Version)
 	assert.Equal(t, "8081", envs.HTTP.Port)
 	assert.Equal(t, "log", envs.Notifier.Provider)
 	assert.Equal(t, "55", envs.Notifier.DefaultCountryCode)
-	assert.Equal(t, "delivery-subscriber.dlq", envs.Kafka.DLQTopic)
-	assert.Empty(t, envs.Kafka.DeliveryBrokersHosts)
-	assert.Equal(t, "delivery-subscriber", AppName)
+	assert.Equal(t, "delivery-notifications", envs.PubSub.NotificationsTopic)
+	assert.True(t, envs.PubSub.VerifyPushToken, "push token check must be on by default")
+	assert.True(t, envs.Auth.Enabled, "authentication must be on by default")
+	assert.Equal(t, "entregador-api", AppName)
 	assert.False(t, envs.IsProduction())
 }
 
@@ -45,14 +44,14 @@ func TestReadEnvsFromEnvironment(t *testing.T) {
 	resetEnvs(t)
 	t.Setenv("ENVIRONMENT", EnvironmentProduction)
 	t.Setenv("APP_NAME", "custom-app")
-	t.Setenv("DELIVERY_BROKER_HOSTS", "kafka-1:9092,kafka-2:9092")
+	t.Setenv("GCP_PROJECT_ID", "my-project")
 	t.Setenv("MONGODB_URI", "mongodb://localhost")
 	t.Setenv("HTTP_PORT", "9000")
 
 	envs, err := ReadEnvs()
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"kafka-1:9092", "kafka-2:9092"}, envs.Kafka.DeliveryBrokersHosts)
+	assert.Equal(t, "my-project", envs.PubSub.ProjectID)
 	assert.Equal(t, "mongodb://localhost", envs.MongoDB.URI)
 	assert.Equal(t, "9000", envs.HTTP.Port)
 	assert.Equal(t, "custom-app", AppName)
@@ -93,52 +92,37 @@ func TestIsProduction(t *testing.T) {
 	}
 }
 
-func TestNewConfig(t *testing.T) {
+func TestReadEnvsCloudRunPortWins(t *testing.T) {
 	resetEnvs(t)
-	oldArgs, oldFlags := os.Args, flag.CommandLine
-	t.Cleanup(func() { os.Args, flag.CommandLine = oldArgs, oldFlags })
+	t.Setenv("HTTP_PORT", "9000")
+	t.Setenv("PORT", "8080")
 
-	path := filepath.Join(t.TempDir(), "sub.json")
-	require.NoError(t, os.WriteFile(path, []byte(`{"app":"a","consumer_group":"g","consumer_name":"n","topic":"t"}`), 0o600))
+	envs, err := ReadEnvs()
 
-	t.Run("valid", func(t *testing.T) {
-		os.Args = []string{"config.test", "-config", path}
-		flag.CommandLine = flag.NewFlagSet("config.test", flag.ContinueOnError)
-
-		cfg, err := NewConfig()
-
-		require.NoError(t, err)
-		require.NotNil(t, cfg.Envs)
-		require.NotNil(t, cfg.SubscriberConfigs)
-		assert.Equal(t, "t", cfg.SubscriberConfigs.Topic)
-	})
-
-	t.Run("missing subscriber config", func(t *testing.T) {
-		os.Args = []string{"config.test"}
-		flag.CommandLine = flag.NewFlagSet("config.test", flag.ContinueOnError)
-
-		cfg, err := NewConfig()
-
-		assert.Nil(t, cfg)
-		assert.ErrorContains(t, err, "failed to read subscriber config")
-	})
+	require.NoError(t, err)
+	assert.Equal(t, "8080", envs.HTTP.Port)
 }
 
-func TestSplitHosts(t *testing.T) {
-	tests := []struct {
-		name string
-		raw  string
-		want []string
-	}{
-		{name: "empty", raw: "", want: []string{}},
-		{name: "single host", raw: "kafka:9092", want: []string{"kafka:9092"}},
-		{name: "trims spaces", raw: " kafka-1:9092 , kafka-2:9092 ", want: []string{"kafka-1:9092", "kafka-2:9092"}},
-		{name: "drops empty items", raw: "kafka-1:9092,,kafka-2:9092,", want: []string{"kafka-1:9092", "kafka-2:9092"}},
-	}
+func TestReadEnvsFromEnvFile(t *testing.T) {
+	resetEnvs(t)
+	envFile := t.TempDir() + "/.env.custom"
+	require.NoError(t, os.WriteFile(envFile, []byte("APP_NAME=from-env-file\nNOTIFIER_PROVIDER=log\n"), 0o600))
+	t.Setenv("ENV_FILE", envFile)
+	t.Setenv("APP_NAME", "")
+	require.NoError(t, os.Unsetenv("APP_NAME"))
+	t.Cleanup(func() { _ = os.Unsetenv("NOTIFIER_PROVIDER") })
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, splitHosts(tt.raw))
-		})
-	}
+	envs, err := ReadEnvs()
+
+	require.NoError(t, err)
+	assert.Equal(t, "from-env-file", envs.App.Name)
+}
+
+func TestReadEnvsMissingEnvFileIsIgnored(t *testing.T) {
+	resetEnvs(t)
+	t.Setenv("ENV_FILE", t.TempDir()+"/missing")
+
+	_, err := ReadEnvs()
+
+	require.NoError(t, err)
 }

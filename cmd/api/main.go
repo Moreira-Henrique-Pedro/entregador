@@ -1,4 +1,3 @@
-// API HTTP: residents, delivery registration/pickup and queries.
 package main
 
 import (
@@ -11,7 +10,8 @@ import (
 	"time"
 
 	"github.com/Moreira-Henrique-Pedro/entregador/config"
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/providers"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/infrastructure/providers"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/infrastructure/server"
 	appLogger "github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
 )
 
@@ -31,21 +31,24 @@ func main() {
 		log.Fatalf("failed to create logger: %v", err)
 	}
 
+	server.SetupGin(envs.App.Env == config.EnvironmentDevelopment, logger)
+
 	api, err := providers.NewAPI(envs, logger)
 	if err != nil {
-		log.Fatalf("failed to initialize api: %v", err)
+		logger.Fatal("Failed to initialize api", "error", err.Error())
 	}
 
-	server := &http.Server{
+	httpServer := &http.Server{
 		Addr:              ":" + envs.HTTP.Port,
 		Handler:           api.Handler,
 		ReadHeaderTimeout: 5 * time.Second,
+		ErrorLog:          appLogger.NewStdLogger(logger),
 	}
 
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Info("HTTP server started", "addr", server.Addr, "version", version)
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logger.Info("HTTP server started", "addr", httpServer.Addr, "version", version)
+		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
 	}()
@@ -60,7 +63,7 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := server.Shutdown(shutdownCtx); err != nil {
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		logger.Error("Failed to shutdown HTTP server", "error", err.Error())
 	}
 

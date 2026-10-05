@@ -4,9 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 
-	"github.com/Moreira-Henrique-Pedro/entregador/config/subscriber"
 	"github.com/joeshaw/envdecode"
 	"github.com/joho/godotenv"
 )
@@ -16,23 +14,20 @@ const (
 	EnvironmentProduction  = "production"
 )
 
-const (
-	DeliveryClusterName = "Delivery"
-)
+const defaultEnvFile = ".env"
 
-var AppName = "delivery-subscriber"
+var AppName = "entregador-api"
 var Envs *Environment
 
 type Environment struct {
 	App struct {
 		Env      string `env:"ENVIRONMENT,default=development"`
 		LogLevel string `env:"LOG_LEVEL,default=info"`
-		Name     string `env:"APP_NAME,default=delivery-subscriber"`
+		Name     string `env:"APP_NAME,default=entregador-api"`
 		Version  string `env:"APP_VERSION,default=1.0.0"`
 	}
 	HTTP struct {
-		Port string `env:"HTTP_PORT,default=8081"`
-		// PORT is injected by Cloud Run and takes precedence over HTTP_PORT.
+		Port         string `env:"HTTP_PORT,default=8081"`
 		CloudRunPort string `env:"PORT"`
 	}
 	Notifier struct {
@@ -51,63 +46,32 @@ type Environment struct {
 		URI      string `env:"MONGODB_URI"`
 		Database string `env:"MONGODB_DATABASE"`
 	}
-	Messaging struct {
-		// pubsub: Google Cloud Pub/Sub with push delivery to the API (single binary).
-		// kafka: Kafka, consumed by cmd/worker.
-		Provider string `env:"MESSAGING_PROVIDER,default=pubsub"`
-	}
 	PubSub struct {
 		ProjectID          string `env:"GCP_PROJECT_ID"`
 		NotificationsTopic string `env:"PUBSUB_NOTIFICATIONS_TOPIC,default=delivery-notifications"`
-		// Push requests carry a Google-signed OIDC token: only disable the check against the emulator.
 		VerifyPushToken    bool   `env:"PUBSUB_PUSH_VERIFY_TOKEN,default=true"`
 		PushAudience       string `env:"PUBSUB_PUSH_AUDIENCE"`
 		PushServiceAccount string `env:"PUBSUB_PUSH_SERVICE_ACCOUNT"`
 	}
-	Kafka struct {
-		DeliveryBrokersHostsRaw string `env:"DELIVERY_BROKER_HOSTS"`
-		DeliveryBrokersHosts    []string
-		CommandsTopic           string `env:"INTERNAL_COMMANDS_TOPIC,default=delivery-internal.commands"`
-		DLQTopic                string `env:"DLQ_TOPIC,default=delivery-subscriber.dlq"`
+	Auth struct {
+		Enabled bool `env:"AUTH_ENABLED,default=true"`
 	}
-	Delivery struct {
-		URL string `env:"DELIVERY_URL"`
+	Firebase struct {
+		ProjectID        string `env:"FIREBASE_PROJECT_ID"`
+		AuthEmulatorHost string `env:"FIREBASE_AUTH_EMULATOR_HOST"`
 	}
-}
-
-type AppConfigs struct {
-	Envs              *Environment
-	SubscriberConfigs *subscriber.SubscriberConfig
-}
-
-func NewConfig() (*AppConfigs, error) {
-	Envs, err := ReadEnvs()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read environment variables: %w", err)
-	}
-
-	subCfg, err := subscriber.Read()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read subscriber config: %w", err)
-	}
-
-	return &AppConfigs{
-		Envs:              Envs,
-		SubscriberConfigs: subCfg,
-	}, nil
 }
 
 func ReadEnvs() (*Environment, error) {
 	if Envs == nil {
-		if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("error loading .env file: %w", err)
+		if err := loadEnvFile(); err != nil {
+			return nil, err
 		}
 
 		Envs = &Environment{}
 		if err := envdecode.Decode(Envs); err != nil {
 			return nil, fmt.Errorf("error loading environment variables: %w", err)
 		}
-		Envs.Kafka.DeliveryBrokersHosts = splitHosts(Envs.Kafka.DeliveryBrokersHostsRaw)
 		if Envs.HTTP.CloudRunPort != "" {
 			Envs.HTTP.Port = Envs.HTTP.CloudRunPort
 		}
@@ -117,21 +81,17 @@ func ReadEnvs() (*Environment, error) {
 	return Envs, nil
 }
 
-func splitHosts(raw string) []string {
-	hosts := []string{}
-	for _, host := range strings.Split(raw, ",") {
-		if host = strings.TrimSpace(host); host != "" {
-			hosts = append(hosts, host)
-		}
-	}
-	return hosts
-}
-
-const (
-	MessagingProviderPubSub = "pubsub"
-	MessagingProviderKafka  = "kafka"
-)
-
 func (c *Environment) IsProduction() bool {
 	return c.App.Env == EnvironmentProduction
+}
+
+func loadEnvFile() error {
+	envFile := os.Getenv("ENV_FILE")
+	if envFile == "" {
+		envFile = defaultEnvFile
+	}
+	if err := godotenv.Load(envFile); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("error loading env file %s: %w", envFile, err)
+	}
+	return nil
 }

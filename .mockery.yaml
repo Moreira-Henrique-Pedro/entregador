@@ -1,4 +1,4 @@
-# Generates testify mocks for the ports: `mockery` (or `make mocks`).
+# Generates testify mocks for the domain interfaces: `mockery` (or `make mocks`).
 # Each mock goes to a mocks/ folder next to its interface.
 with-expecter: true
 dir: "{{.InterfaceDir}}/mocks"
@@ -9,8 +9,8 @@ disable-version-string: true
 resolve-type-alias: false
 issue-845-fix: true
 packages:
-  # Driving ports (use cases), mocked by the inbound adapters' tests.
-  github.com/Moreira-Henrique-Pedro/entregador/internal/application/ports/in:
+  # Use cases, mocked by the controllers' tests.
+  github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/usecases:
     interfaces:
       CreateResident:
       UpdateResident:
@@ -20,22 +20,18 @@ packages:
       DeleteDelivery:
       ListDeliveries:
       NotifyDelivery:
-  # Driven ports, mocked by the use cases' tests.
-  github.com/Moreira-Henrique-Pedro/entregador/internal/application/ports/out:
+      CreateUser:
+  # Repositories and services, mocked by the use cases' tests.
+  github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories:
     interfaces:
       ResidentRepository:
       DeliveryRepository:
+  github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/services:
+    interfaces:
       Notifier:
       NotificationScheduler:
-  github.com/Moreira-Henrique-Pedro/entregador/internal/adapters/out/mongodb/client:
+      TokenVerifier:
+      UserRegistry:
+  github.com/Moreira-Henrique-Pedro/entregador/internal/infrastructure/repositories/mongodb/client:
     interfaces:
       MongoClientCollectionPort:
-  github.com/Moreira-Henrique-Pedro/entregador/pkg/pubsub:
-    interfaces:
-      MessagePublisher:
-  # External interface: its mock lives next to the adapter that uses it.
-  github.com/ThreeDotsLabs/watermill/message:
-    config:
-      dir: pkg/watermill/mocks
-    interfaces:
-      Publisher:
