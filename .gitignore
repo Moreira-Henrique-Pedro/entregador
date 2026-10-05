@@ -2,3 +2,4 @@ coverage.out
 .env
 coverage.html
 env.cloudrun.yaml
+.env.test

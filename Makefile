@@ -1,4 +1,8 @@
-.PHONY: up app-up up-kafka infra api worker docker-build-api docker-build-worker test coverage mocks down linter
+.PHONY: up app-up infra api create-admin docker-build test coverage mocks down linter
+
+## Arquivo de variáveis usado localmente; para usar outro: make up ENV_FILE=.env
+ENV_FILE ?= .env.test
+export ENV_FILE
 
 ## Sobe MongoDB + emulador do Pub/Sub + api em primeiro plano (mesma topologia do Cloud Run)
 up:
@@ -8,30 +12,22 @@ up:
 app-up:
 	docker compose -f ./docker-compose.yml up --build -d
 
-## Sobe o modo Kafka: Kafka + Kafka UI + api + worker (MESSAGING_PROVIDER=kafka no .env)
-up-kafka:
-	docker compose -f ./docker-compose.yml --profile kafka up --build
-
 ## Sobe só MongoDB + emulador do Pub/Sub, com o push apontando para a api rodando no host (make api)
 infra:
 	PUBSUB_PUSH_ENDPOINT=http://host.docker.internal:8081/internal/pubsub/notifications \
-		docker compose -f ./docker-compose.yml up -d mongodb pubsub pubsub-init
+		docker compose -f ./docker-compose.yml up -d mongodb pubsub pubsub-init pubsub-ui firebase
 
-## Roda a API localmente (com o .env; veja .env.example)
+## Roda a API localmente (com o $(ENV_FILE); veja .env.example)
 api:
 	go run ./cmd/api
 
-## Roda o worker localmente (só no modo Kafka)
-worker:
-	go run ./cmd/worker -config=config/subscriber/deployments/delivery_subscriber_internal_commands.json
+## Cria um usuário admin no Firebase (local: no emulador): make create-admin EMAIL=... NAME=... PASSWORD=...
+create-admin:
+	go run ./cmd/create-admin -email="$(EMAIL)" -name="$(NAME)" -password="$(PASSWORD)"
 
-## Gera a imagem Docker da API HTTP
-docker-build-api:
-	docker build --build-arg APP=api -t entregador-api .
-
-## Gera a imagem Docker do worker
-docker-build-worker:
-	docker build --build-arg APP=worker -t entregador-worker .
+## Gera a imagem Docker da API
+docker-build:
+	docker build -t entregador-api .
 
 ## rodar todos os testes unitários
 test:
@@ -50,7 +46,7 @@ mocks:
 	mockery
 
 down:
-	docker compose -f ./docker-compose.yml --profile kafka down
+	docker compose -f ./docker-compose.yml down
 
 ## Roda o golangci-lint com as regras do .golangci.yml
 linter:

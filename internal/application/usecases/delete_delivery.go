@@ -5,54 +5,64 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/application/ports/out"
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/services"
 	"github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
 )
 
 type DeleteDelivery struct {
-	deliveryRepository out.DeliveryRepository
-	scheduler          out.NotificationScheduler
+	deliveryRepository repositories.DeliveryRepository
+	scheduler          services.NotificationScheduler
 }
 
-func NewDeleteDelivery(deliveryRepository out.DeliveryRepository, scheduler out.NotificationScheduler) *DeleteDelivery {
+func NewDeleteDelivery(deliveryRepository repositories.DeliveryRepository, scheduler services.NotificationScheduler) *DeleteDelivery {
 	return &DeleteDelivery{
 		deliveryRepository: deliveryRepository,
 		scheduler:          scheduler,
 	}
 }
 
-// Execute marks the delivery as picked up and schedules the pickup notification.
-// It is idempotent: retrying after a failed schedule only schedules it again.
 func (uc *DeleteDelivery) Execute(ctx context.Context, deliveryID string) error {
-	if deliveryID == "" {
-		return fmt.Errorf("%w: delivery_id is required", domain.ErrInvalidDelivery)
+	if err := entities.ValidateDeliveryID(deliveryID); err != nil {
+		return err
 	}
-
-	logger := logger.GetLoggerFromContext(ctx).With("delivery_id", deliveryID)
 
 	delivery, err := uc.deliveryRepository.FindByDeliveryID(ctx, deliveryID)
 	if err != nil {
 		return fmt.Errorf("failed to find delivery: deliveryID=%s: %w", deliveryID, err)
 	}
 
-	if delivery.Status == domain.DeliveryStatusPending {
-		err := uc.deliveryRepository.MarkAsDeleted(ctx, delivery.DeliveryID)
-		if err != nil && !errors.Is(err, domain.ErrEntityNotFound) {
-			return fmt.Errorf("failed to delete delivery: deliveryID=%s: %w", delivery.DeliveryID, err)
-		}
-		logger.Info("Delivery deleted")
-	} else {
-		logger.Info("Delivery already deleted")
+	if err := uc.markAsPickedUp(ctx, delivery); err != nil {
+		return err
 	}
 
-	// Runs even for an already deleted delivery, so a retry after a failed schedule still notifies.
-	if !delivery.PickupNotifiedAt.IsZero() {
+	return uc.schedulePickupNotification(ctx, delivery)
+}
+
+func (uc *DeleteDelivery) markAsPickedUp(ctx context.Context, delivery *entities.Delivery) error {
+	log := logger.GetLoggerFromContext(ctx).With("delivery_id", delivery.DeliveryID)
+
+	if !delivery.IsPending() {
+		log.Info("Delivery already deleted")
 		return nil
 	}
-	if err := uc.scheduler.Schedule(ctx, delivery.DeliveryID, domain.NotificationTypeDeliveryPickedUp); err != nil {
-		return fmt.Errorf("failed to schedule pickup notification: deliveryID=%s: %w", delivery.DeliveryID, err)
+
+	err := uc.deliveryRepository.MarkAsDeleted(ctx, delivery.DeliveryID)
+	if err != nil && !errors.Is(err, entities.ErrEntityNotFound) {
+		return fmt.Errorf("failed to delete delivery: deliveryID=%s: %w", delivery.DeliveryID, err)
 	}
 
+	log.Info("Delivery deleted")
+	return nil
+}
+
+func (uc *DeleteDelivery) schedulePickupNotification(ctx context.Context, delivery *entities.Delivery) error {
+	if delivery.IsPickupNotified() {
+		return nil
+	}
+	if err := uc.scheduler.Schedule(ctx, delivery.DeliveryID, entities.NotificationTypeDeliveryPickedUp); err != nil {
+		return fmt.Errorf("failed to schedule pickup notification: deliveryID=%s: %w", delivery.DeliveryID, err)
+	}
 	return nil
 }

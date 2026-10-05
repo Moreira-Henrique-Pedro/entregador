@@ -12,11 +12,8 @@ RUN go mod download
 # Copiar o código fonte
 COPY . .
 
-# Binário a compilar: api (HTTP + push do Pub/Sub) ou worker (só no modo Kafka)
-ARG APP=api
-
-# Compilar a aplicação
-RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/${APP}
+# Compilar a API (HTTP + push do Pub/Sub)
+RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/api
 
 # Imagem final
 FROM alpine:latest
@@ -28,9 +25,6 @@ WORKDIR /app
 
 # Copiar o binário compilado
 COPY --from=builder /app/main .
-
-# Config do consumer do worker, passada via -config
-COPY --from=builder /app/config/subscriber/deployments ./config/subscriber/deployments
 
 USER app
 

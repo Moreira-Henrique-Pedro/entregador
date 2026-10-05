@@ -1,0 +1,563 @@
+openapi: 3.0.3
+info:
+  title: Entregador API
+  version: 1.0.0
+  description: |
+    API da portaria: moradores, entregas e notificações por WhatsApp.
+
+    Todas as rotas `/v1` exigem um ID token do Firebase Auth (`Authorization: Bearer <token>`),
+    exceto quando a API roda localmente com `AUTH_ENABLED=false`.
+
+    Papéis: `admin` (síndico) pode tudo; `doorman` (porteiro) registra, retira e consulta entregas
+    e consulta moradores e apartamentos.
+servers:
+  - url: http://localhost:8081
+    description: Local
+security:
+  - firebaseAuth: []
+tags:
+  - name: Entregas
+  - name: Moradores
+  - name: Apartamentos
+  - name: Usuários
+  - name: Interno
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: health
+      tags: [Interno]
+      security: []
+      responses:
+        "200":
+          description: API no ar.
+
+  /v1/deliveries:
+    get:
+      summary: Lista entregas
+      description: Todas as entregas, das mais novas para as mais antigas. Filtros opcionais.
+      operationId: listDeliveries
+      tags: [Entregas]
+      parameters:
+        - name: apartment
+          in: query
+          required: false
+          schema:
+            type: string
+          example: "101"
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/DeliveryStatus"
+      responses:
+        "200":
+          description: Lista de entregas.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Delivery"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Registra uma entrega
+      description: |
+        Grava a entrega como `pending` e agenda a notificação de chegada.
+        Sem `resident_id`, com um morador inexistente ou de outro apartamento, a entrega vai para o morador "Outro".
+      operationId: registerDelivery
+      tags: [Entregas]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterDeliveryRequest"
+      responses:
+        "201":
+          description: Entrega registrada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Delivery"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          description: O apartamento não tem nenhum morador cadastrado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/deliveries/{delivery_id}:
+    delete:
+      summary: Marca a entrega como retirada
+      description: Agenda a notificação de retirada. Idempotente.
+      operationId: pickUpDelivery
+      tags: [Entregas]
+      parameters:
+        - $ref: "#/components/parameters/DeliveryID"
+      responses:
+        "204":
+          description: Retirada.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/apartments:
+    get:
+      summary: Lista os apartamentos com moradores
+      description: Sem repetição, em ordem natural (2, 63, 101, 101A). O morador "Outro" não conta.
+      operationId: listApartments
+      tags: [Apartamentos]
+      responses:
+        "200":
+          description: Apartamentos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example: ["63", "101"]
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/residents:
+    get:
+      summary: Lista moradores de um apartamento ou de um telefone
+      description: Informe `apartment` ou `phone`, não os dois. Inclui o morador "Outro" do apartamento.
+      operationId: listResidents
+      tags: [Moradores]
+      parameters:
+        - name: apartment
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: phone
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Moradores ativos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Resident"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Cadastra um morador
+      description: O primeiro morador do apartamento vira `resident-primary`. Só `admin`.
+      operationId: createResident
+      tags: [Moradores]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateResidentRequest"
+      responses:
+        "201":
+          description: Morador cadastrado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resident"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/residents/{resident_id}:
+    patch:
+      summary: Atualiza um morador
+      description: Atualização parcial; campo vazio ou omitido não muda. Só `admin`.
+      operationId: updateResident
+      tags: [Moradores]
+      parameters:
+        - $ref: "#/components/parameters/ResidentID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateResidentRequest"
+      responses:
+        "200":
+          description: Morador atualizado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resident"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/OtherResidentReadOnly"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      summary: Remove um morador
+      description: Remoção lógica. Se era o principal, o mais antigo do apartamento é promovido. Só `admin`.
+      operationId: deleteResident
+      tags: [Moradores]
+      parameters:
+        - $ref: "#/components/parameters/ResidentID"
+      responses:
+        "204":
+          description: Removido.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/OtherResidentReadOnly"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/users:
+    post:
+      summary: Cria um usuário (admin ou porteiro)
+      description: A senha vai direto para o Firebase Auth; a API não guarda. Só `admin`.
+      operationId: createUser
+      tags: [Usuários]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: Usuário criado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: Já existe um usuário com esse e-mail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /internal/pubsub/notifications:
+    post:
+      summary: Push do Pub/Sub (uso interno)
+      description: |
+        Recebe o `NotifyDeliveryCommand` pela push subscription. Não é para o front.
+        Em produção exige o token OIDC assinado pela service account do push.
+      operationId: receivePubSubPush
+      tags: [Interno]
+      security:
+        - pubSubPushToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PubSubPush"
+      responses:
+        "204":
+          description: Mensagem processada (ack), ou tipo de evento ignorado.
+        "400":
+          description: Mensagem malformada; vai para o dead-letter depois das tentativas.
+        "401":
+          description: Token do push ausente ou inválido.
+        "500":
+          description: Falha ao notificar; o Pub/Sub tenta de novo.
+
+components:
+  securitySchemes:
+    firebaseAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: ID token do Firebase Auth. O papel vem na claim `role`.
+    pubSubPushToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token OIDC que o Pub/Sub assina com a service account do push.
+
+  parameters:
+    DeliveryID:
+      name: delivery_id
+      in: path
+      required: true
+      schema:
+        type: string
+    ResidentID:
+      name: resident_id
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: Requisição inválida (JSON, campo obrigatório ou valor inválido).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "apartment is required"
+    Unauthenticated:
+      description: Sem token, token inválido ou expirado.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: unauthenticated
+    Forbidden:
+      description: O papel do usuário não pode usar a rota.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: forbidden
+    NotFound:
+      description: Não encontrado.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    OtherResidentReadOnly:
+      description: O morador "Outro" não pode ser alterado nem removido.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InternalError:
+      description: Erro inesperado.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: internal server error
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    DeliveryStatus:
+      type: string
+      enum: [pending, deleted]
+      description: "`pending`: aguardando retirada; `deleted`: retirada."
+
+    Delivery:
+      type: object
+      required: [delivery_id, apartment, resident_id, package_type, urgency, status, created_at, updated_at]
+      properties:
+        delivery_id:
+          type: string
+        apartment:
+          type: string
+        resident_id:
+          type: string
+        resident_name:
+          type: string
+          description: Nome do destinatário. Vem só na listagem.
+        package_type:
+          type: string
+        urgency:
+          type: string
+        status:
+          $ref: "#/components/schemas/DeliveryStatus"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          description: Só em entregas retiradas.
+
+    RegisterDeliveryRequest:
+      type: object
+      required: [apartment]
+      additionalProperties: false
+      properties:
+        apartment:
+          type: string
+        resident_id:
+          type: string
+        package_type:
+          type: string
+        urgency:
+          type: string
+
+    ResidentType:
+      type: string
+      enum: [resident-primary, resident-secondary, other]
+
+    ResidentStatus:
+      type: string
+      enum: [created, deleted]
+
+    Resident:
+      type: object
+      required: [resident_id, name, apartment, phone, type, status, created_at, updated_at]
+      properties:
+        resident_id:
+          type: string
+        name:
+          type: string
+        apartment:
+          type: string
+        phone:
+          type: string
+        type:
+          $ref: "#/components/schemas/ResidentType"
+        status:
+          $ref: "#/components/schemas/ResidentStatus"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateResidentRequest:
+      type: object
+      required: [name, apartment, phone]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        apartment:
+          type: string
+        phone:
+          type: string
+          description: Sem código do país, o `NOTIFIER_DEFAULT_COUNTRY_CODE` é adicionado.
+
+    UpdateResidentRequest:
+      type: object
+      additionalProperties: false
+      description: Pelo menos um campo.
+      properties:
+        name:
+          type: string
+        apartment:
+          type: string
+        phone:
+          type: string
+
+    Role:
+      type: string
+      enum: [admin, doorman]
+
+    User:
+      type: object
+      required: [user_id, email, name, role]
+      properties:
+        user_id:
+          type: string
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+
+    CreateUserRequest:
+      type: object
+      required: [email, password, name, role]
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        name:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+
+    PubSubPush:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: object
+          properties:
+            data:
+              type: string
+              format: byte
+              description: NotifyDeliveryCommand em JSON, codificado em base64.
+            attributes:
+              type: object
+              additionalProperties:
+                type: string
+            messageId:
+              type: string
+        subscription:
+          type: string
+        deliveryAttempt:
+          type: integer
