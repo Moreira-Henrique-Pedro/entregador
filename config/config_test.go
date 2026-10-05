@@ -126,3 +126,13 @@ func TestReadEnvsMissingEnvFileIsIgnored(t *testing.T) {
 
 	require.NoError(t, err)
 }
+
+func TestReadEnvsCORSAllowedOrigins(t *testing.T) {
+	resetEnvs(t)
+	t.Setenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173;https://entregador.web.app")
+
+	envs, err := ReadEnvs()
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"http://localhost:5173", "https://entregador.web.app"}, envs.HTTP.CORSAllowedOrigins)
+}

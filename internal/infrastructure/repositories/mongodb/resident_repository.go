@@ -198,8 +198,29 @@ func (r *ResidentRepository) FindByPhone(ctx context.Context, phone string) ([]*
 	return r.find(ctx, activeResidentFilter(bson.M{"phone": phone}))
 }
 
-func (r *ResidentRepository) find(ctx context.Context, filter bson.M) ([]*entities.Resident, error) {
-	cursor, err := r.collection.Find(ctx, filter)
+func (r *ResidentRepository) FindByResidentIDs(ctx context.Context, residentIDs []string) ([]*entities.Resident, error) {
+	if len(residentIDs) == 0 {
+		return []*entities.Resident{}, nil
+	}
+	return r.find(ctx, bson.M{"resident_id": bson.M{"$in": residentIDs}})
+}
+
+func (r *ResidentRepository) ListApartments(ctx context.Context) ([]string, error) {
+	residents, err := r.find(ctx, activeResidentFilter(bson.M{"type": bson.M{"$ne": string(entities.ResidentTypeOther)}}),
+		options.Find().SetProjection(bson.M{"apartment": 1}))
+	if err != nil {
+		return nil, err
+	}
+
+	apartments := make([]string, 0, len(residents))
+	for _, resident := range residents {
+		apartments = append(apartments, resident.Apartment)
+	}
+	return entities.SortApartments(apartments), nil
+}
+
+func (r *ResidentRepository) find(ctx context.Context, filter bson.M, opts ...*options.FindOptions) ([]*entities.Resident, error) {
+	cursor, err := r.collection.Find(ctx, filter, opts...)
 	if err != nil {
 		return nil, err
 	}

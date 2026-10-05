@@ -481,3 +481,53 @@ func TestResidentRepositoryFindMany(t *testing.T) {
 		})
 	}
 }
+
+func TestResidentRepositoryFindByResidentIDs(t *testing.T) {
+	repo, coll := newResidentRepo(t)
+	coll.EXPECT().Find(mock.Anything, bson.M{"resident_id": bson.M{"$in": []string{"r1", "gone"}}}).
+		Return(cursor(t, []any{models.Resident{ResidentID: "r1", Name: "Ana"}}), nil).Once()
+
+	got, err := repo.FindByResidentIDs(context.Background(), []string{"r1", "gone"})
+
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "Ana", got[0].Name)
+}
+
+func TestResidentRepositoryFindByResidentIDs_Empty(t *testing.T) {
+	repo, _ := newResidentRepo(t)
+
+	got, err := repo.FindByResidentIDs(context.Background(), nil)
+
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
+func TestResidentRepositoryListApartments(t *testing.T) {
+	boom := errors.New("boom")
+	wantFilter := bson.M{"type": bson.M{"$ne": "other"}, "deleteat": time.Time{}}
+	onlyApartment := mock.MatchedBy(func(o *options.FindOptions) bool {
+		return o != nil && reflect.DeepEqual(o.Projection, bson.M{"apartment": 1})
+	})
+
+	t.Run("distinct apartments in natural order", func(t *testing.T) {
+		repo, coll := newResidentRepo(t)
+		coll.EXPECT().Find(mock.Anything, wantFilter, onlyApartment).Return(cursor(t, []any{
+			models.Resident{Apartment: "101"}, models.Resident{Apartment: "63"}, models.Resident{Apartment: "101"},
+		}), nil).Once()
+
+		got, err := repo.ListApartments(context.Background())
+
+		require.NoError(t, err)
+		assert.Equal(t, []string{"63", "101"}, got)
+	})
+
+	t.Run("find error", func(t *testing.T) {
+		repo, coll := newResidentRepo(t)
+		coll.EXPECT().Find(mock.Anything, wantFilter, onlyApartment).Return(nil, boom).Once()
+
+		_, err := repo.ListApartments(context.Background())
+
+		assert.ErrorIs(t, err, boom)
+	})
+}

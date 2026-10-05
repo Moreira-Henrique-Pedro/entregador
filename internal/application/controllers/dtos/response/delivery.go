@@ -7,27 +7,29 @@ import (
 )
 
 type Delivery struct {
-	DeliveryID  string     `json:"delivery_id"`
-	Apartment   string     `json:"apartment"`
-	ResidentID  string     `json:"resident_id"`
-	PackageType string     `json:"package_type"`
-	Urgency     string     `json:"urgency"`
-	Status      string     `json:"status"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	DeletedAt   *time.Time `json:"deleted_at,omitempty"`
+	DeliveryID   string     `json:"delivery_id"`
+	Apartment    string     `json:"apartment"`
+	ResidentID   string     `json:"resident_id"`
+	ResidentName string     `json:"resident_name,omitempty"`
+	PackageType  string     `json:"package_type"`
+	Urgency      string     `json:"urgency"`
+	Status       string     `json:"status"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	DeletedAt    *time.Time `json:"deleted_at,omitempty"`
 }
 
 func NewDelivery(delivery *entities.Delivery) Delivery {
 	response := Delivery{
-		DeliveryID:  delivery.DeliveryID,
-		Apartment:   delivery.Apartment,
-		ResidentID:  delivery.ResidentID,
-		PackageType: delivery.PackageType,
-		Urgency:     delivery.Urgency,
-		Status:      string(delivery.Status),
-		CreatedAt:   delivery.CreatedAt,
-		UpdatedAt:   delivery.UpdatedAt,
+		DeliveryID:   delivery.DeliveryID,
+		Apartment:    delivery.Apartment,
+		ResidentID:   delivery.ResidentID,
+		ResidentName: delivery.ResidentName,
+		PackageType:  delivery.PackageType,
+		Urgency:      delivery.Urgency,
+		Status:       string(delivery.Status),
+		CreatedAt:    delivery.CreatedAt,
+		UpdatedAt:    delivery.UpdatedAt,
 	}
 	if !delivery.DeleteAt.IsZero() {
 		deletedAt := delivery.DeleteAt

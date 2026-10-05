@@ -19,32 +19,31 @@ import (
 )
 
 func TestListDeliveries(t *testing.T) {
-	pending := &entities.Delivery{DeliveryID: "d1", Apartment: "101", Status: entities.DeliveryStatusPending}
+	pending := &entities.Delivery{DeliveryID: "d1", Apartment: "101", ResidentName: "Ana", Status: entities.DeliveryStatusPending}
 	deleted := &entities.Delivery{DeliveryID: "d2", Apartment: "101", Status: entities.DeliveryStatusDeleted, DeleteAt: time.Now()}
 
 	tests := []struct {
 		name       string
 		query      string
 		expect     bool
-		wantFilter *entities.DeliveryStatus
+		wantFilter entities.DeliveryFilter
 		readerOut  []*entities.Delivery
 		readerErr  error
 		wantStatus int
 		wantCount  int
 	}{
-		{name: "all statuses", query: "?apartment=101", expect: true, readerOut: []*entities.Delivery{pending, deleted}, wantStatus: http.StatusOK, wantCount: 2},
-		{name: "filter by status", query: "?apartment=101&status=pending", expect: true, wantFilter: ptr(entities.DeliveryStatusPending), readerOut: []*entities.Delivery{pending}, wantStatus: http.StatusOK, wantCount: 1},
-		{name: "invalid status", query: "?apartment=101&status=lost", wantStatus: http.StatusBadRequest},
-		{name: "missing apartment", query: "", wantStatus: http.StatusBadRequest},
-		{name: "reader error", query: "?apartment=101", expect: true, readerErr: errors.New("boom"), wantStatus: http.StatusInternalServerError},
+		{name: "all deliveries", query: "", expect: true, readerOut: []*entities.Delivery{pending, deleted}, wantStatus: http.StatusOK, wantCount: 2},
+		{name: "by apartment", query: "?apartment=101", expect: true, wantFilter: entities.DeliveryFilter{Apartment: "101"}, readerOut: []*entities.Delivery{pending, deleted}, wantStatus: http.StatusOK, wantCount: 2},
+		{name: "by apartment and status", query: "?apartment=101&status=pending", expect: true, wantFilter: entities.DeliveryFilter{Apartment: "101", Status: ptr(entities.DeliveryStatusPending)}, readerOut: []*entities.Delivery{pending}, wantStatus: http.StatusOK, wantCount: 1},
+		{name: "invalid status", query: "?status=lost", wantStatus: http.StatusBadRequest},
+		{name: "reader error", query: "", expect: true, readerErr: errors.New("boom"), wantStatus: http.StatusInternalServerError},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reader := mocks.NewListDeliveries(t)
 			if tt.expect {
-
-				reader.EXPECT().Execute(mock.Anything, "101", tt.wantFilter).Return(tt.readerOut, tt.readerErr).Once()
+				reader.EXPECT().Execute(mock.Anything, tt.wantFilter).Return(tt.readerOut, tt.readerErr).Once()
 			}
 
 			rec := httptest.NewRecorder()
@@ -64,6 +63,9 @@ func TestListDeliveries(t *testing.T) {
 			for i, item := range body {
 				assert.Equal(t, tt.readerOut[i].DeliveryID, item["delivery_id"])
 				assert.Equal(t, string(tt.readerOut[i].Status), item["status"])
+				if tt.readerOut[i].ResidentName != "" {
+					assert.Equal(t, tt.readerOut[i].ResidentName, item["resident_name"])
+				}
 				_, hasDeletedAt := item["deleted_at"]
 				assert.Equal(t, item["status"] == "deleted", hasDeletedAt, "deleted_at presence mismatch for %v", item)
 			}

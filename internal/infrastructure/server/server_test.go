@@ -38,7 +38,7 @@ func TestNew(t *testing.T) {
 		{name: "panic is recovered", method: http.MethodGet, path: "/a/panic", wantStatus: http.StatusInternalServerError},
 	}
 
-	handler := New(logger.NewNoopLogger(), fakeController{path: "/a"}, fakeController{path: "/b"})
+	handler := New(logger.NewNoopLogger(), nil, fakeController{path: "/a"}, fakeController{path: "/b"})
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

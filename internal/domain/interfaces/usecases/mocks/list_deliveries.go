@@ -22,9 +22,9 @@ func (_m *ListDeliveries) EXPECT() *ListDeliveries_Expecter {
 	return &ListDeliveries_Expecter{mock: &_m.Mock}
 }
 
-// Execute provides a mock function with given fields: ctx, apartment, status
-func (_m *ListDeliveries) Execute(ctx context.Context, apartment string, status *entities.DeliveryStatus) ([]*entities.Delivery, error) {
-	ret := _m.Called(ctx, apartment, status)
+// Execute provides a mock function with given fields: ctx, filter
+func (_m *ListDeliveries) Execute(ctx context.Context, filter entities.DeliveryFilter) ([]*entities.Delivery, error) {
+	ret := _m.Called(ctx, filter)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Execute")
@@ -32,19 +32,19 @@ func (_m *ListDeliveries) Execute(ctx context.Context, apartment string, status 
 
 	var r0 []*entities.Delivery
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, *entities.DeliveryStatus) ([]*entities.Delivery, error)); ok {
-		return rf(ctx, apartment, status)
+	if rf, ok := ret.Get(0).(func(context.Context, entities.DeliveryFilter) ([]*entities.Delivery, error)); ok {
+		return rf(ctx, filter)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, *entities.DeliveryStatus) []*entities.Delivery); ok {
-		r0 = rf(ctx, apartment, status)
+	if rf, ok := ret.Get(0).(func(context.Context, entities.DeliveryFilter) []*entities.Delivery); ok {
+		r0 = rf(ctx, filter)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*entities.Delivery)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, *entities.DeliveryStatus) error); ok {
-		r1 = rf(ctx, apartment, status)
+	if rf, ok := ret.Get(1).(func(context.Context, entities.DeliveryFilter) error); ok {
+		r1 = rf(ctx, filter)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -59,15 +59,14 @@ type ListDeliveries_Execute_Call struct {
 
 // Execute is a helper method to define mock.On call
 //   - ctx context.Context
-//   - apartment string
-//   - status *entities.DeliveryStatus
-func (_e *ListDeliveries_Expecter) Execute(ctx interface{}, apartment interface{}, status interface{}) *ListDeliveries_Execute_Call {
-	return &ListDeliveries_Execute_Call{Call: _e.mock.On("Execute", ctx, apartment, status)}
+//   - filter entities.DeliveryFilter
+func (_e *ListDeliveries_Expecter) Execute(ctx interface{}, filter interface{}) *ListDeliveries_Execute_Call {
+	return &ListDeliveries_Execute_Call{Call: _e.mock.On("Execute", ctx, filter)}
 }
 
-func (_c *ListDeliveries_Execute_Call) Run(run func(ctx context.Context, apartment string, status *entities.DeliveryStatus)) *ListDeliveries_Execute_Call {
+func (_c *ListDeliveries_Execute_Call) Run(run func(ctx context.Context, filter entities.DeliveryFilter)) *ListDeliveries_Execute_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(*entities.DeliveryStatus))
+		run(args[0].(context.Context), args[1].(entities.DeliveryFilter))
 	})
 	return _c
 }
@@ -77,7 +76,7 @@ func (_c *ListDeliveries_Execute_Call) Return(_a0 []*entities.Delivery, _a1 erro
 	return _c
 }
 
-func (_c *ListDeliveries_Execute_Call) RunAndReturn(run func(context.Context, string, *entities.DeliveryStatus) ([]*entities.Delivery, error)) *ListDeliveries_Execute_Call {
+func (_c *ListDeliveries_Execute_Call) RunAndReturn(run func(context.Context, entities.DeliveryFilter) ([]*entities.Delivery, error)) *ListDeliveries_Execute_Call {
 	_c.Call.Return(run)
 	return _c
 }

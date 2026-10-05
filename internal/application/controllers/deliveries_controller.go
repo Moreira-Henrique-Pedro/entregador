@@ -46,8 +46,7 @@ func (c *DeliveriesController) list(ctx *gin.Context) {
 		return
 	}
 
-	apartment, status := query.FromDTO()
-	deliveries, err := c.listDeliveries.Execute(ctx.Request.Context(), apartment, status)
+	deliveries, err := c.listDeliveries.Execute(ctx.Request.Context(), query.FromDTO())
 	if err != nil {
 		writeError(ctx, deliveryResource, err)
 		return

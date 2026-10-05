@@ -35,6 +35,8 @@ func deliveryIndexes() []mongo.IndexModel {
 
 		{Keys: bson.D{{Key: "apartment", Value: 1}, {Key: createdAtField, Value: -1}}},
 		{Keys: bson.D{{Key: "apartment", Value: 1}, {Key: "status", Value: 1}, {Key: createdAtField, Value: -1}}},
+		{Keys: bson.D{{Key: createdAtField, Value: -1}}},
+		{Keys: bson.D{{Key: "status", Value: 1}, {Key: createdAtField, Value: -1}}},
 	}
 }
 
@@ -76,10 +78,13 @@ func (r *DeliveryRepository) FindByDeliveryID(ctx context.Context, deliveryID st
 	return model.ToEntity(), nil
 }
 
-func (r *DeliveryRepository) FindByApartment(ctx context.Context, apartment string, status *entities.DeliveryStatus) ([]*entities.Delivery, error) {
-	filter := bson.M{"apartment": apartment}
-	if status != nil {
-		filter["status"] = string(*status)
+func (r *DeliveryRepository) Find(ctx context.Context, deliveryFilter entities.DeliveryFilter) ([]*entities.Delivery, error) {
+	filter := bson.M{}
+	if deliveryFilter.Apartment != "" {
+		filter["apartment"] = deliveryFilter.Apartment
+	}
+	if deliveryFilter.Status != nil {
+		filter["status"] = string(*deliveryFilter.Status)
 	}
 
 	cursor, err := r.collection.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: createdAtField, Value: -1}}))

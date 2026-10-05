@@ -22,29 +22,29 @@ func (_m *DeliveryRepository) EXPECT() *DeliveryRepository_Expecter {
 	return &DeliveryRepository_Expecter{mock: &_m.Mock}
 }
 
-// FindByApartment provides a mock function with given fields: ctx, apartment, status
-func (_m *DeliveryRepository) FindByApartment(ctx context.Context, apartment string, status *entities.DeliveryStatus) ([]*entities.Delivery, error) {
-	ret := _m.Called(ctx, apartment, status)
+// Find provides a mock function with given fields: ctx, filter
+func (_m *DeliveryRepository) Find(ctx context.Context, filter entities.DeliveryFilter) ([]*entities.Delivery, error) {
+	ret := _m.Called(ctx, filter)
 
 	if len(ret) == 0 {
-		panic("no return value specified for FindByApartment")
+		panic("no return value specified for Find")
 	}
 
 	var r0 []*entities.Delivery
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, *entities.DeliveryStatus) ([]*entities.Delivery, error)); ok {
-		return rf(ctx, apartment, status)
+	if rf, ok := ret.Get(0).(func(context.Context, entities.DeliveryFilter) ([]*entities.Delivery, error)); ok {
+		return rf(ctx, filter)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, *entities.DeliveryStatus) []*entities.Delivery); ok {
-		r0 = rf(ctx, apartment, status)
+	if rf, ok := ret.Get(0).(func(context.Context, entities.DeliveryFilter) []*entities.Delivery); ok {
+		r0 = rf(ctx, filter)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*entities.Delivery)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, *entities.DeliveryStatus) error); ok {
-		r1 = rf(ctx, apartment, status)
+	if rf, ok := ret.Get(1).(func(context.Context, entities.DeliveryFilter) error); ok {
+		r1 = rf(ctx, filter)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -52,32 +52,31 @@ func (_m *DeliveryRepository) FindByApartment(ctx context.Context, apartment str
 	return r0, r1
 }
 
-// DeliveryRepository_FindByApartment_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FindByApartment'
-type DeliveryRepository_FindByApartment_Call struct {
+// DeliveryRepository_Find_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Find'
+type DeliveryRepository_Find_Call struct {
 	*mock.Call
 }
 
-// FindByApartment is a helper method to define mock.On call
+// Find is a helper method to define mock.On call
 //   - ctx context.Context
-//   - apartment string
-//   - status *entities.DeliveryStatus
-func (_e *DeliveryRepository_Expecter) FindByApartment(ctx interface{}, apartment interface{}, status interface{}) *DeliveryRepository_FindByApartment_Call {
-	return &DeliveryRepository_FindByApartment_Call{Call: _e.mock.On("FindByApartment", ctx, apartment, status)}
+//   - filter entities.DeliveryFilter
+func (_e *DeliveryRepository_Expecter) Find(ctx interface{}, filter interface{}) *DeliveryRepository_Find_Call {
+	return &DeliveryRepository_Find_Call{Call: _e.mock.On("Find", ctx, filter)}
 }
 
-func (_c *DeliveryRepository_FindByApartment_Call) Run(run func(ctx context.Context, apartment string, status *entities.DeliveryStatus)) *DeliveryRepository_FindByApartment_Call {
+func (_c *DeliveryRepository_Find_Call) Run(run func(ctx context.Context, filter entities.DeliveryFilter)) *DeliveryRepository_Find_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(*entities.DeliveryStatus))
+		run(args[0].(context.Context), args[1].(entities.DeliveryFilter))
 	})
 	return _c
 }
 
-func (_c *DeliveryRepository_FindByApartment_Call) Return(_a0 []*entities.Delivery, _a1 error) *DeliveryRepository_FindByApartment_Call {
+func (_c *DeliveryRepository_Find_Call) Return(_a0 []*entities.Delivery, _a1 error) *DeliveryRepository_Find_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *DeliveryRepository_FindByApartment_Call) RunAndReturn(run func(context.Context, string, *entities.DeliveryStatus) ([]*entities.Delivery, error)) *DeliveryRepository_FindByApartment_Call {
+func (_c *DeliveryRepository_Find_Call) RunAndReturn(run func(context.Context, entities.DeliveryFilter) ([]*entities.Delivery, error)) *DeliveryRepository_Find_Call {
 	_c.Call.Return(run)
 	return _c
 }

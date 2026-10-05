@@ -49,8 +49,20 @@ func TestDeliveryValidations(t *testing.T) {
 	assert.NoError(t, ValidateDeliveryID("d1"))
 	assert.ErrorIs(t, ValidateDeliveryID(""), ErrInvalidDelivery)
 
-	assert.NoError(t, ValidateDeliveryFilter("101", nil))
-	assert.NoError(t, ValidateDeliveryFilter("101", &pending))
-	assert.ErrorIs(t, ValidateDeliveryFilter("", nil), ErrInvalidDelivery)
-	assert.ErrorIs(t, ValidateDeliveryFilter("101", &lost), ErrInvalidDelivery)
+	assert.NoError(t, DeliveryFilter{}.Validate())
+	assert.NoError(t, DeliveryFilter{Apartment: "101", Status: &pending}.Validate())
+	assert.ErrorIs(t, DeliveryFilter{Status: &lost}.Validate(), ErrInvalidDelivery)
+}
+
+func TestResidentIDsOfAndAttachResidentNames(t *testing.T) {
+	deliveries := []*Delivery{{ResidentID: "ana"}, {ResidentID: "other-101"}, {ResidentID: "ana"}, {ResidentID: "gone"}}
+
+	assert.Equal(t, []string{"ana", "other-101", "gone"}, ResidentIDsOf(deliveries))
+
+	AttachResidentNames(deliveries, []*Resident{{ResidentID: "ana", Name: "Ana"}, NewOtherResident("101")})
+
+	assert.Equal(t, "Ana", deliveries[0].ResidentName)
+	assert.Equal(t, "Outro", deliveries[1].ResidentName)
+	assert.Equal(t, "Ana", deliveries[2].ResidentName)
+	assert.Empty(t, deliveries[3].ResidentName)
 }

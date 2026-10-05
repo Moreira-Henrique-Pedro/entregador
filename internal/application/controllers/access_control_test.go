@@ -17,8 +17,11 @@ func TestRouteAccess(t *testing.T) {
 	deleteResident := mocks.NewDeleteResident(t)
 	deleteResident.EXPECT().Execute(mock.Anything, mock.Anything).Return(nil).Maybe()
 	residents := NewResidentsController(ResidentsControllerDependencies{Authorizer: testAuthorizer{}, DeleteResident: deleteResident})
-	deliveries := NewDeliveriesController(DeliveriesControllerDependencies{Authorizer: testAuthorizer{}})
+	deliveries := NewDeliveriesController(DeliveriesControllerDependencies{Authorizer: testAuthorizer{}, ListDeliveries: listDeliveriesStub(t)})
 	users := NewUsersController(UsersControllerDependencies{Authorizer: testAuthorizer{}})
+	listApartments := mocks.NewListApartments(t)
+	listApartments.EXPECT().Execute(mock.Anything).Return([]string{}, nil).Maybe()
+	apartments := NewApartmentsController(ApartmentsControllerDependencies{Authorizer: testAuthorizer{}, ListApartments: listApartments})
 
 	routes := []struct {
 		name       string
@@ -34,6 +37,7 @@ func TestRouteAccess(t *testing.T) {
 		{name: "list deliveries", controller: deliveries, method: http.MethodGet, path: "/v1/deliveries"},
 		{name: "register delivery", controller: deliveries, method: http.MethodPost, path: "/v1/deliveries"},
 		{name: "create user", controller: users, method: http.MethodPost, path: "/v1/users", adminOnly: true},
+		{name: "list apartments", controller: apartments, method: http.MethodGet, path: "/v1/apartments"},
 	}
 
 	for _, route := range routes {
@@ -55,4 +59,10 @@ func TestRouteAccess(t *testing.T) {
 			})
 		}
 	}
+}
+
+func listDeliveriesStub(t *testing.T) *mocks.ListDeliveries {
+	listDeliveries := mocks.NewListDeliveries(t)
+	listDeliveries.EXPECT().Execute(mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	return listDeliveries
 }

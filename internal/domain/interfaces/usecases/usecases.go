@@ -31,7 +31,7 @@ type DeleteDelivery interface {
 }
 
 type ListDeliveries interface {
-	Execute(ctx context.Context, apartment string, status *entities.DeliveryStatus) ([]*entities.Delivery, error)
+	Execute(ctx context.Context, filter entities.DeliveryFilter) ([]*entities.Delivery, error)
 }
 
 type NotifyDelivery interface {
@@ -40,4 +40,8 @@ type NotifyDelivery interface {
 
 type CreateUser interface {
 	Execute(ctx context.Context, user *entities.User, password string) (*entities.User, error)
+}
+
+type ListApartments interface {
+	Execute(ctx context.Context) ([]string, error)
 }

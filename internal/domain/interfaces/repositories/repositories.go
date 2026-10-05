@@ -15,12 +15,14 @@ type ResidentRepository interface {
 	FindByResidentID(ctx context.Context, residentID string) (*entities.Resident, error)
 	FindByApartment(ctx context.Context, apartment string) ([]*entities.Resident, error)
 	FindByPhone(ctx context.Context, phone string) ([]*entities.Resident, error)
+	FindByResidentIDs(ctx context.Context, residentIDs []string) ([]*entities.Resident, error)
+	ListApartments(ctx context.Context) ([]string, error)
 }
 
 type DeliveryRepository interface {
 	Insert(ctx context.Context, delivery *entities.Delivery) error
 	FindByDeliveryID(ctx context.Context, deliveryID string) (*entities.Delivery, error)
-	FindByApartment(ctx context.Context, apartment string, status *entities.DeliveryStatus) ([]*entities.Delivery, error)
+	Find(ctx context.Context, filter entities.DeliveryFilter) ([]*entities.Delivery, error)
 	MarkAsDeleted(ctx context.Context, deliveryID string) error
 	MarkArrivalAsNotified(ctx context.Context, deliveryID string) error
 	MarkPickupAsNotified(ctx context.Context, deliveryID string) error

@@ -54,7 +54,7 @@ func NewAPI(env *config.Environment, log logger.Logger) (*API, error) {
 	residents, deliveries := repos.residentRepository, repos.deliveryRepository
 	scheduler := pubSub.scheduler
 
-	handler := server.New(log,
+	handler := server.New(log, env.HTTP.CORSAllowedOrigins,
 		controllers.NewHealthController(),
 		controllers.NewResidentsController(controllers.ResidentsControllerDependencies{
 			Authorizer:               authorizer,
@@ -66,9 +66,13 @@ func NewAPI(env *config.Environment, log logger.Logger) (*API, error) {
 		}),
 		controllers.NewDeliveriesController(controllers.DeliveriesControllerDependencies{
 			Authorizer:       authorizer,
-			ListDeliveries:   usecases.NewListDeliveriesByApartment(deliveries),
+			ListDeliveries:   usecases.NewListDeliveries(deliveries, residents),
 			RegisterDelivery: usecases.NewRegisterDelivery(deliveries, residents, scheduler),
 			DeleteDelivery:   usecases.NewDeleteDelivery(deliveries, scheduler),
+		}),
+		controllers.NewApartmentsController(controllers.ApartmentsControllerDependencies{
+			Authorizer:     authorizer,
+			ListApartments: usecases.NewListApartments(residents),
 		}),
 		controllers.NewUsersController(controllers.UsersControllerDependencies{
 			Authorizer: authorizer,

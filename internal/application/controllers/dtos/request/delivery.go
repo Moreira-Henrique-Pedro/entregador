@@ -19,14 +19,15 @@ func (d *RegisterDelivery) FromDTO() *entities.Delivery {
 }
 
 type ListDeliveries struct {
-	Apartment string `form:"apartment" binding:"required"`
+	Apartment string `form:"apartment"`
 	Status    string `form:"status" binding:"omitempty,oneof=pending deleted"`
 }
 
-func (q *ListDeliveries) FromDTO() (string, *entities.DeliveryStatus) {
-	if q.Status == "" {
-		return q.Apartment, nil
+func (q *ListDeliveries) FromDTO() entities.DeliveryFilter {
+	filter := entities.DeliveryFilter{Apartment: q.Apartment}
+	if q.Status != "" {
+		status := entities.DeliveryStatus(q.Status)
+		filter.Status = &status
 	}
-	status := entities.DeliveryStatus(q.Status)
-	return q.Apartment, &status
+	return filter
 }

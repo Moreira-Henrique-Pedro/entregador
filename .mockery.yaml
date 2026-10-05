@@ -21,6 +21,7 @@ packages:
       ListDeliveries:
       NotifyDelivery:
       CreateUser:
+      ListApartments:
   # Repositories and services, mocked by the use cases' tests.
   github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories:
     interfaces:

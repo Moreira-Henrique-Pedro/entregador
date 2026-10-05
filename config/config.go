@@ -27,8 +27,9 @@ type Environment struct {
 		Version  string `env:"APP_VERSION,default=1.0.0"`
 	}
 	HTTP struct {
-		Port         string `env:"HTTP_PORT,default=8081"`
-		CloudRunPort string `env:"PORT"`
+		Port               string   `env:"HTTP_PORT,default=8081"`
+		CloudRunPort       string   `env:"PORT"`
+		CORSAllowedOrigins []string `env:"CORS_ALLOWED_ORIGINS"`
 	}
 	Notifier struct {
 		Provider           string `env:"NOTIFIER_PROVIDER,default=log"`

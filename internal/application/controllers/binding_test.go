@@ -31,7 +31,6 @@ func TestValidationMessages(t *testing.T) {
 		{name: "list residents without filter", controller: residents, method: http.MethodGet, path: "/v1/residents", want: "apartment or phone is required"},
 		{name: "list residents with both filters", controller: residents, method: http.MethodGet, path: "/v1/residents?apartment=101&phone=1", want: "use either apartment or phone, not both"},
 		{name: "register delivery without apartment", controller: deliveries, method: http.MethodPost, path: "/v1/deliveries", body: `{}`, want: "apartment is required"},
-		{name: "list deliveries without apartment", controller: deliveries, method: http.MethodGet, path: "/v1/deliveries", want: "apartment is required"},
 		{name: "list deliveries with invalid status", controller: deliveries, method: http.MethodGet, path: "/v1/deliveries?apartment=101&status=lost", want: "status must be one of: pending, deleted"},
 	}
 

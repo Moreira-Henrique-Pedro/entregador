@@ -64,8 +64,10 @@ func TestNewDeliveryRepository(t *testing.T) {
 					{{Key: "delivery_id", Value: 1}},
 					{{Key: "apartment", Value: 1}, {Key: "createdat", Value: -1}},
 					{{Key: "apartment", Value: 1}, {Key: "status", Value: 1}, {Key: "createdat", Value: -1}},
+					{{Key: "createdat", Value: -1}},
+					{{Key: "status", Value: 1}, {Key: "createdat", Value: -1}},
 				},
-				[]bool{true, false, false},
+				[]bool{true, false, false, false, false},
 			)
 		})
 	}
@@ -166,7 +168,7 @@ func TestDeliveryRepositoryFindByDeliveryID(t *testing.T) {
 	}
 }
 
-func TestDeliveryRepositoryFindByApartment(t *testing.T) {
+func TestDeliveryRepositoryFind(t *testing.T) {
 	boom := errors.New("boom")
 	docs := []any{
 		models.Delivery{ID: "d2", DeliveryID: "d2", Apartment: "101", Status: "deleted"},
@@ -178,17 +180,19 @@ func TestDeliveryRepositoryFindByApartment(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		status     *entities.DeliveryStatus
+		filter     entities.DeliveryFilter
 		docs       []any
 		findErr    error
 		wantFilter bson.M
 		wantErr    error
 		wantIDs    []string
 	}{
-		{name: "without status", docs: docs, wantFilter: bson.M{"apartment": "101"}, wantIDs: []string{"d2", "d1"}},
-		{name: "with status", status: statusPtr(entities.DeliveryStatusPending), docs: docs[1:], wantFilter: bson.M{"apartment": "101", "status": "pending"}, wantIDs: []string{"d1"}},
-		{name: "no results", docs: []any{}, wantFilter: bson.M{"apartment": "101"}, wantIDs: []string{}},
-		{name: "find error", findErr: boom, wantFilter: bson.M{"apartment": "101"}, wantErr: boom},
+		{name: "all deliveries", docs: docs, wantFilter: bson.M{}, wantIDs: []string{"d2", "d1"}},
+		{name: "by apartment", filter: entities.DeliveryFilter{Apartment: "101"}, docs: docs, wantFilter: bson.M{"apartment": "101"}, wantIDs: []string{"d2", "d1"}},
+		{name: "by status", filter: entities.DeliveryFilter{Status: statusPtr(entities.DeliveryStatusPending)}, docs: docs[1:], wantFilter: bson.M{"status": "pending"}, wantIDs: []string{"d1"}},
+		{name: "by apartment and status", filter: entities.DeliveryFilter{Apartment: "101", Status: statusPtr(entities.DeliveryStatusPending)}, docs: docs[1:], wantFilter: bson.M{"apartment": "101", "status": "pending"}, wantIDs: []string{"d1"}},
+		{name: "no results", docs: []any{}, wantFilter: bson.M{}, wantIDs: []string{}},
+		{name: "find error", findErr: boom, wantFilter: bson.M{}, wantErr: boom},
 	}
 
 	for _, tt := range tests {
@@ -201,7 +205,7 @@ func TestDeliveryRepositoryFindByApartment(t *testing.T) {
 				call.Return(cursor(t, tt.docs), nil)
 			}
 
-			got, err := repo.FindByApartment(context.Background(), "101", tt.status)
+			got, err := repo.Find(context.Background(), tt.filter)
 
 			require.ErrorIs(t, err, tt.wantErr)
 			if tt.wantErr != nil {

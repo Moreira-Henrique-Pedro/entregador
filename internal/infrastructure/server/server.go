@@ -29,10 +29,13 @@ func SetupGin(debug bool, log logger.Logger) {
 	}
 }
 
-func New(log logger.Logger, controllers ...Controller) http.Handler {
+func New(log logger.Logger, allowedOrigins []string, controllers ...Controller) http.Handler {
 	engine := gin.New()
 	engine.HandleMethodNotAllowed = true
 	engine.Use(middlewares.RequestLogger(log), middlewares.Recovery())
+	if len(allowedOrigins) > 0 {
+		engine.Use(middlewares.CORS(allowedOrigins))
+	}
 
 	for _, controller := range controllers {
 		controller.RegisterRoutes(engine)

@@ -14,6 +14,7 @@ type Delivery struct {
 	ResidentID        string
 	PackageType       string
 	Urgency           string
+	ResidentName      string
 	Status            DeliveryStatus
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
@@ -68,16 +69,36 @@ func ValidateDeliveryID(deliveryID string) error {
 	return validation.Required(ErrInvalidDelivery, "delivery_id", deliveryID)
 }
 
-func ValidateDeliveryFilter(apartment string, status *DeliveryStatus) error {
-	return validation.First(
-		validation.Required(ErrInvalidDelivery, "apartment", apartment),
-		validateStatusFilter(status),
-	)
+type DeliveryFilter struct {
+	Apartment string
+	Status    *DeliveryStatus
 }
 
-func validateStatusFilter(status *DeliveryStatus) error {
-	if status != nil && !status.IsValid() {
-		return fmt.Errorf("%w: invalid delivery status %q", ErrInvalidDelivery, *status)
+func (f DeliveryFilter) Validate() error {
+	if f.Status != nil && !f.Status.IsValid() {
+		return fmt.Errorf("%w: invalid delivery status %q", ErrInvalidDelivery, *f.Status)
 	}
 	return nil
+}
+
+func AttachResidentNames(deliveries []*Delivery, residents []*Resident) {
+	names := make(map[string]string, len(residents))
+	for _, resident := range residents {
+		names[resident.ResidentID] = resident.Name
+	}
+	for _, delivery := range deliveries {
+		delivery.ResidentName = names[delivery.ResidentID]
+	}
+}
+
+func ResidentIDsOf(deliveries []*Delivery) []string {
+	seen := make(map[string]bool, len(deliveries))
+	ids := make([]string, 0, len(deliveries))
+	for _, delivery := range deliveries {
+		if !seen[delivery.ResidentID] {
+			seen[delivery.ResidentID] = true
+			ids = append(ids, delivery.ResidentID)
+		}
+	}
+	return ids
 }

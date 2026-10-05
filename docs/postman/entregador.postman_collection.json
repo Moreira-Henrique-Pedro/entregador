@@ -771,6 +771,36 @@
           "name": "Consultar",
           "item": [
             {
+              "name": "Listar apartamentos",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                      "pm.test(\"inclui o apartamento cadastrado\", () => pm.expect(pm.response.json()).to.include(pm.variables.get(\"apartment\")));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "description": "Apartamentos com pelo menos um morador (sem contar o 'Outro'), em ordem natural. Usado no select de nova entrega.",
+                "url": {
+                  "raw": "{{baseUrl}}/v1/apartments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "apartments"
+                  ]
+                }
+              }
+            },
+            {
               "name": "Listar por apartamento",
               "event": [
                 {
@@ -1691,14 +1721,15 @@
               }
             },
             {
-              "name": "Erro: sem apartamento (400)",
+              "name": "Listar todas",
               "event": [
                 {
                   "listen": "test",
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "pm.test(\"status 400\", () => pm.response.to.have.status(400));"
+                      "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                      "pm.test(\"traz o nome do morador\", () => pm.expect(pm.response.json().some((d) => d.resident_name)).to.be.true);"
                     ]
                   }
                 }

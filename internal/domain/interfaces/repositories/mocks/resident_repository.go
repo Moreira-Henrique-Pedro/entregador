@@ -340,6 +340,65 @@ func (_c *ResidentRepository_FindByResidentID_Call) RunAndReturn(run func(contex
 	return _c
 }
 
+// FindByResidentIDs provides a mock function with given fields: ctx, residentIDs
+func (_m *ResidentRepository) FindByResidentIDs(ctx context.Context, residentIDs []string) ([]*entities.Resident, error) {
+	ret := _m.Called(ctx, residentIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FindByResidentIDs")
+	}
+
+	var r0 []*entities.Resident
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, []string) ([]*entities.Resident, error)); ok {
+		return rf(ctx, residentIDs)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, []string) []*entities.Resident); ok {
+		r0 = rf(ctx, residentIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*entities.Resident)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, []string) error); ok {
+		r1 = rf(ctx, residentIDs)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ResidentRepository_FindByResidentIDs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FindByResidentIDs'
+type ResidentRepository_FindByResidentIDs_Call struct {
+	*mock.Call
+}
+
+// FindByResidentIDs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - residentIDs []string
+func (_e *ResidentRepository_Expecter) FindByResidentIDs(ctx interface{}, residentIDs interface{}) *ResidentRepository_FindByResidentIDs_Call {
+	return &ResidentRepository_FindByResidentIDs_Call{Call: _e.mock.On("FindByResidentIDs", ctx, residentIDs)}
+}
+
+func (_c *ResidentRepository_FindByResidentIDs_Call) Run(run func(ctx context.Context, residentIDs []string)) *ResidentRepository_FindByResidentIDs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].([]string))
+	})
+	return _c
+}
+
+func (_c *ResidentRepository_FindByResidentIDs_Call) Return(_a0 []*entities.Resident, _a1 error) *ResidentRepository_FindByResidentIDs_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ResidentRepository_FindByResidentIDs_Call) RunAndReturn(run func(context.Context, []string) ([]*entities.Resident, error)) *ResidentRepository_FindByResidentIDs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Insert provides a mock function with given fields: ctx, resident
 func (_m *ResidentRepository) Insert(ctx context.Context, resident *entities.Resident) error {
 	ret := _m.Called(ctx, resident)
@@ -383,6 +442,64 @@ func (_c *ResidentRepository_Insert_Call) Return(_a0 error) *ResidentRepository_
 }
 
 func (_c *ResidentRepository_Insert_Call) RunAndReturn(run func(context.Context, *entities.Resident) error) *ResidentRepository_Insert_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListApartments provides a mock function with given fields: ctx
+func (_m *ResidentRepository) ListApartments(ctx context.Context) ([]string, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListApartments")
+	}
+
+	var r0 []string
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) ([]string, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) []string); ok {
+		r0 = rf(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ResidentRepository_ListApartments_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListApartments'
+type ResidentRepository_ListApartments_Call struct {
+	*mock.Call
+}
+
+// ListApartments is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *ResidentRepository_Expecter) ListApartments(ctx interface{}) *ResidentRepository_ListApartments_Call {
+	return &ResidentRepository_ListApartments_Call{Call: _e.mock.On("ListApartments", ctx)}
+}
+
+func (_c *ResidentRepository_ListApartments_Call) Run(run func(ctx context.Context)) *ResidentRepository_ListApartments_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *ResidentRepository_ListApartments_Call) Return(_a0 []string, _a1 error) *ResidentRepository_ListApartments_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ResidentRepository_ListApartments_Call) RunAndReturn(run func(context.Context) ([]string, error)) *ResidentRepository_ListApartments_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -154,7 +154,8 @@ Details, payloads and status codes in [docs/api.md](docs/api.md). How notificati
 | `PATCH`  | `/v1/residents/{resident_id}`                | Partially update a resident |
 | `DELETE` | `/v1/residents/{resident_id}`                | Delete a resident |
 | `POST`   | `/v1/deliveries`                             | Register a delivery (notifies the arrival) |
-| `GET`    | `/v1/deliveries?apartment=<apt>`             | List deliveries of an apartment |
+| `GET`    | `/v1/deliveries[?apartment=&status=]`        | List deliveries (all, or filtered), with the resident name |
+| `GET`    | `/v1/apartments`                             | Apartments with at least one resident |
 | `DELETE` | `/v1/deliveries/{delivery_id}`               | Pick up a delivery (notifies the pickup) |
 | `POST`   | `/v1/users`                                  | Create an admin or doorman user (admin only) |
 

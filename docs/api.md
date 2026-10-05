@@ -124,6 +124,14 @@ curl -X POST http://localhost:8081/v1/residents \
 | `201`  | Criado. O body é o morador. |
 | `400`  | JSON inválido, campo desconhecido ou campo obrigatório ausente. |
 
+### Listar apartamentos — `GET /v1/apartments`
+
+```bash
+curl http://localhost:8081/v1/apartments   # ["63","101"]
+```
+
+Apartamentos com pelo menos um morador ativo (o "Outro" não conta), sem repetição e em ordem natural (`2`, `63`, `101`, `101A`). É a lista usada para registrar uma entrega.
+
 ### Consultar por apartamento — `GET /v1/residents?apartment=<apartamento>`
 
 ```bash
@@ -241,18 +249,19 @@ A chamada é **idempotente**: retirar de novo uma entrega já retirada responde 
 | `404`  | Entrega não existe. |
 | `500`  | Falha ao gravar ou ao agendar a notificação. Pode tentar de novo. |
 
-### Consultar por apartamento — `GET /v1/deliveries?apartment=<apartamento>`
+### Consultar — `GET /v1/deliveries`
 
 ```bash
+curl 'http://localhost:8081/v1/deliveries'
 curl 'http://localhost:8081/v1/deliveries?apartment=101&status=pending'
 ```
 
-`status` é opcional: `pending` ou `deleted` (retirada).
+Sem filtros, lista todas as entregas, das mais novas para as mais antigas. Filtros opcionais: `apartment` e `status` (`pending` ou `deleted`). Cada entrega traz também o `resident_name` (para o morador "Outro", vem `Outro`).
 
 | Status | Quando |
 |--------|--------|
 | `200`  | Lista de entregas. |
-| `400`  | Sem `apartment`, ou `status` inválido. |
+| `400`  | `status` inválido. |
 
 ## Rota interna
 

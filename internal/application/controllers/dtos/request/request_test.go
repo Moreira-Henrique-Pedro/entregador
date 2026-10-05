@@ -16,13 +16,12 @@ func TestRegisterDelivery_FromDTO(t *testing.T) {
 }
 
 func TestListDeliveries_FromDTO(t *testing.T) {
-	apartment, status := (&ListDeliveries{Apartment: "101"}).FromDTO()
-	assert.Equal(t, "101", apartment)
-	assert.Nil(t, status)
+	assert.Equal(t, entities.DeliveryFilter{}, (&ListDeliveries{}).FromDTO())
+	assert.Equal(t, entities.DeliveryFilter{Apartment: "101"}, (&ListDeliveries{Apartment: "101"}).FromDTO())
 
-	_, status = (&ListDeliveries{Apartment: "101", Status: "pending"}).FromDTO()
-	require.NotNil(t, status)
-	assert.Equal(t, entities.DeliveryStatusPending, *status)
+	filter := (&ListDeliveries{Apartment: "101", Status: "pending"}).FromDTO()
+	require.NotNil(t, filter.Status)
+	assert.Equal(t, entities.DeliveryStatusPending, *filter.Status)
 }
 
 func TestCreateResident_FromDTO(t *testing.T) {
