@@ -36,10 +36,10 @@ type testAuthorizer struct{}
 func (testAuthorizer) Require(roles ...entities.Role) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		role := ctx.GetHeader(testRoleHeader)
-		switch {
-		case role == "":
+		switch role {
+		case "":
 			role = string(entities.RoleAdmin)
-		case role == "anonymous":
+		case "anonymous":
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, response.Error{Error: "unauthenticated"})
 			return
 		}
