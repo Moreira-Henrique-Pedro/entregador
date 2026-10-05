@@ -5,24 +5,22 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/application/ports/out"
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/services"
 	"github.com/Moreira-Henrique-Pedro/entregador/pkg/logger"
 )
 
-// WhatsApp templates do not accept empty variables.
-const defaultPackageLabel = "encomenda"
-
 type NotifyDelivery struct {
-	deliveryRepository out.DeliveryRepository
-	residentRepository out.ResidentRepository
-	notifier           out.Notifier
+	deliveryRepository repositories.DeliveryRepository
+	residentRepository repositories.ResidentRepository
+	notifier           services.Notifier
 }
 
 func NewNotifyDelivery(
-	deliveryRepository out.DeliveryRepository,
-	residentRepository out.ResidentRepository,
-	notifier out.Notifier,
+	deliveryRepository repositories.DeliveryRepository,
+	residentRepository repositories.ResidentRepository,
+	notifier services.Notifier,
 ) *NotifyDelivery {
 	return &NotifyDelivery{
 		deliveryRepository: deliveryRepository,
@@ -31,170 +29,110 @@ func NewNotifyDelivery(
 	}
 }
 
-func (uc *NotifyDelivery) Execute(ctx context.Context, deliveryID string, notificationType domain.NotificationType) error {
-	logger := logger.GetLoggerFromContext(ctx).With(
-		"delivery_id", deliveryID,
-		"notification_type", string(notificationType),
-	)
+func (uc *NotifyDelivery) Execute(ctx context.Context, deliveryID string, notificationType entities.NotificationType) error {
+	log := logger.GetLoggerFromContext(ctx).With("delivery_id", deliveryID, "notification_type", string(notificationType))
+	ctx = log.AddToContext(ctx, log)
+
+	delivery, err := uc.findDeliveryToNotify(ctx, deliveryID, notificationType)
+	if err != nil || delivery == nil {
+		return err
+	}
+
+	recipient, err := uc.resolveRecipient(ctx, delivery)
+	if err != nil {
+		return fmt.Errorf("failed to resolve notification recipient: deliveryID=%s: %w", delivery.DeliveryID, err)
+	}
+
+	if err := uc.send(ctx, notificationType, recipient, delivery); err != nil {
+		return err
+	}
+
+	return uc.markAsNotified(ctx, delivery.DeliveryID, notificationType)
+}
+
+func (uc *NotifyDelivery) findDeliveryToNotify(ctx context.Context, deliveryID string, notificationType entities.NotificationType) (*entities.Delivery, error) {
+	log := logger.GetLoggerFromContext(ctx)
 
 	if !notificationType.IsValid() {
-		logger.Warn("Discarding notification with invalid type")
-		return nil
+		log.Warn("Discarding notification with invalid type")
+		return nil, nil
 	}
 
 	delivery, err := uc.deliveryRepository.FindByDeliveryID(ctx, deliveryID)
-	if errors.Is(err, domain.ErrEntityNotFound) {
-		logger.Warn("Delivery not found for notification")
-		return nil
+	if errors.Is(err, entities.ErrEntityNotFound) {
+		log.Warn("Delivery not found for notification")
+		return nil, nil
 	}
 	if err != nil {
-		return fmt.Errorf("failed to find delivery: deliveryID=%s: %w", deliveryID, err)
+		return nil, fmt.Errorf("failed to find delivery: deliveryID=%s: %w", deliveryID, err)
 	}
 
-	if reason, skip := shouldSkipNotification(delivery, notificationType); skip {
-		logger.Info("Skipping delivery notification", "reason", reason)
-		return nil
+	if reason := delivery.NotificationSkipReason(notificationType); reason != "" {
+		log.Info("Skipping delivery notification", "reason", reason)
+		return nil, nil
 	}
-
-	recipients, err := uc.resolveRecipients(ctx, delivery)
-	if err != nil {
-		return fmt.Errorf("failed to resolve notification recipients: deliveryID=%s: %w", delivery.DeliveryID, err)
-	}
-	if len(recipients) == 0 {
-		logger.Warn("No resident with phone to notify", "apartment", delivery.Apartment, "resident_id", delivery.ResidentID)
-	}
-
-	sent := 0
-	for _, resident := range recipients {
-		err := uc.notifier.Send(ctx, buildNotification(notificationType, resident, delivery))
-		if errors.Is(err, out.ErrInvalidRecipient) {
-
-			logger.Warn("Resident phone rejected by the provider", "resident_id", resident.ResidentID, "error", err.Error())
-			continue
-		}
-		if err != nil {
-			return fmt.Errorf("failed to notify resident: residentID=%s: %w", resident.ResidentID, err)
-		}
-		sent++
-	}
-
-	if err := uc.markAsNotified(ctx, delivery.DeliveryID, notificationType); err != nil {
-		return fmt.Errorf("failed to mark delivery as notified: deliveryID=%s: %w", delivery.DeliveryID, err)
-	}
-
-	logger.Info("Delivery notified", "recipients", len(recipients), "sent", sent)
-
-	return nil
+	return delivery, nil
 }
 
-func shouldSkipNotification(delivery *domain.Delivery, notificationType domain.NotificationType) (string, bool) {
-	switch notificationType {
-	case domain.NotificationTypeDeliveryArrived:
-		if !delivery.ArrivalNotifiedAt.IsZero() {
-			return "arrival already notified", true
-		}
-		if delivery.Status != domain.DeliveryStatusPending {
-			return "delivery already picked up", true
-		}
-	case domain.NotificationTypeDeliveryPickedUp:
-		if !delivery.PickupNotifiedAt.IsZero() {
-			return "pickup already notified", true
-		}
-		if delivery.Status != domain.DeliveryStatusDeleted {
-			return "delivery not picked up yet", true
-		}
-	}
-	return "", false
-}
-
-func (uc *NotifyDelivery) markAsNotified(ctx context.Context, deliveryID string, notificationType domain.NotificationType) error {
-	if notificationType == domain.NotificationTypeDeliveryPickedUp {
-		return uc.deliveryRepository.MarkPickupAsNotified(ctx, deliveryID)
-	}
-	return uc.deliveryRepository.MarkArrivalAsNotified(ctx, deliveryID)
-}
-
-func (uc *NotifyDelivery) resolveRecipients(ctx context.Context, delivery *domain.Delivery) ([]*domain.Resident, error) {
-	var candidates []*domain.Resident
-
+func (uc *NotifyDelivery) resolveRecipient(ctx context.Context, delivery *entities.Delivery) (*entities.Resident, error) {
 	resident, err := uc.residentRepository.FindByResidentID(ctx, delivery.ResidentID)
-	switch {
-	case err == nil && !resident.IsOther():
-		candidates = []*domain.Resident{resident}
-	case err == nil, errors.Is(err, domain.ErrEntityNotFound):
-		primary, err := uc.findPrimary(ctx, delivery.Apartment)
-		if err != nil {
-			return nil, err
-		}
-		if primary != nil {
-			candidates = []*domain.Resident{primary}
-		}
-	default:
+	if err != nil && !errors.Is(err, entities.ErrEntityNotFound) {
 		return nil, err
 	}
-
-	recipients := make([]*domain.Resident, 0, len(candidates))
-	for _, candidate := range candidates {
-		if !candidate.IsOther() && candidate.Phone != "" {
-			recipients = append(recipients, candidate)
-		}
+	if err != nil || resident.IsOther() {
+		return uc.findPrimary(ctx, delivery.Apartment)
 	}
-	return recipients, nil
+	return resident, nil
 }
 
-func (uc *NotifyDelivery) findPrimary(ctx context.Context, apartment string) (*domain.Resident, error) {
+func (uc *NotifyDelivery) findPrimary(ctx context.Context, apartment string) (*entities.Resident, error) {
 	primary, err := uc.findPrimaryInApartment(ctx, apartment)
 	if err != nil || primary != nil {
 		return primary, err
 	}
 
-	if err := uc.residentRepository.EnsurePrimaryResident(ctx, apartment); err != nil {
+	if err := ensurePrimaryResident(ctx, uc.residentRepository, apartment); err != nil {
 		return nil, err
 	}
 	return uc.findPrimaryInApartment(ctx, apartment)
 }
 
-func (uc *NotifyDelivery) findPrimaryInApartment(ctx context.Context, apartment string) (*domain.Resident, error) {
-	residents, err := uc.residentRepository.FindByApartment(ctx, apartment)
+func (uc *NotifyDelivery) findPrimaryInApartment(ctx context.Context, apartment string) (*entities.Resident, error) {
+	residents, err := findApartmentResidents(ctx, uc.residentRepository, apartment)
 	if err != nil {
 		return nil, err
 	}
-	for _, resident := range residents {
-		if resident.IsPrimary() {
-			return resident, nil
-		}
-	}
-	return nil, nil
+	return entities.FindPrimary(residents), nil
 }
 
-// Template variables: {{1}} resident name, {{2}} apartment, {{3}} package type.
-func buildNotification(notificationType domain.NotificationType, resident *domain.Resident, delivery *domain.Delivery) out.Notification {
-	packageLabel := delivery.PackageType
-	if packageLabel == "" {
-		packageLabel = defaultPackageLabel
+func (uc *NotifyDelivery) send(ctx context.Context, notificationType entities.NotificationType, recipient *entities.Resident, delivery *entities.Delivery) error {
+	log := logger.GetLoggerFromContext(ctx)
+
+	if recipient == nil || !recipient.CanBeNotified() {
+		log.Warn("No resident with phone to notify", "apartment", delivery.Apartment, "resident_id", delivery.ResidentID)
+		return nil
 	}
 
-	return out.Notification{
-		Type:      notificationType,
-		Phone:     resident.Phone,
-		Body:      buildMessageBody(notificationType, resident, delivery),
-		Variables: []string{resident.Name, delivery.Apartment, packageLabel},
+	err := uc.notifier.Send(ctx, entities.NewDeliveryNotification(notificationType, recipient, delivery))
+	if errors.Is(err, entities.ErrInvalidRecipient) {
+		log.Warn("Resident phone rejected by the provider", "resident_id", recipient.ResidentID, "error", err.Error())
+		return nil
 	}
+	if err != nil {
+		return fmt.Errorf("failed to notify resident: residentID=%s: %w", recipient.ResidentID, err)
+	}
+
+	log.Info("Delivery notified", "resident_id", recipient.ResidentID)
+	return nil
 }
 
-func buildMessageBody(notificationType domain.NotificationType, resident *domain.Resident, delivery *domain.Delivery) string {
-	packageSuffix := ""
-	if delivery.PackageType != "" {
-		packageSuffix = fmt.Sprintf(" (%s)", delivery.PackageType)
+func (uc *NotifyDelivery) markAsNotified(ctx context.Context, deliveryID string, notificationType entities.NotificationType) error {
+	mark := uc.deliveryRepository.MarkArrivalAsNotified
+	if notificationType == entities.NotificationTypeDeliveryPickedUp {
+		mark = uc.deliveryRepository.MarkPickupAsNotified
 	}
-
-	if notificationType == domain.NotificationTypeDeliveryPickedUp {
-		return fmt.Sprintf("Olá, %s! A entrega%s do apartamento %s foi retirada na portaria.", resident.Name, packageSuffix, delivery.Apartment)
+	if err := mark(ctx, deliveryID); err != nil {
+		return fmt.Errorf("failed to mark delivery as notified: deliveryID=%s: %w", deliveryID, err)
 	}
-
-	message := fmt.Sprintf("Olá, %s! Chegou uma entrega para o apartamento %s%s. Retire na portaria.", resident.Name, delivery.Apartment, packageSuffix)
-	if delivery.Urgency != "" {
-		message += fmt.Sprintf(" Urgência: %s.", delivery.Urgency)
-	}
-	return message
+	return nil
 }

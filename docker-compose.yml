@@ -1,26 +1,5 @@
-# Default (MESSAGING_PROVIDER=pubsub): MongoDB + Pub/Sub emulator + api. Same topology as Cloud Run.
+# MongoDB + Pub/Sub emulator + api: the same topology as Cloud Run.
 #   docker compose up --build
-# Kafka (MESSAGING_PROVIDER=kafka in .env): adds Kafka, Kafka UI and the worker.
-#   docker compose --profile kafka up --build
-
-x-app: &app
-  build:
-    context: .
-    args:
-      APP: api
-  env_file:
-    - path: .env
-      required: false
-  environment:
-    # Inside the compose network, localhost does not reach the other containers.
-    MONGODB_URI: mongodb://mongodb:27017
-    DELIVERY_BROKER_HOSTS: kafka:9092
-    MESSAGING_PROVIDER: ${MESSAGING_PROVIDER:-pubsub}
-    GCP_PROJECT_ID: entregador-local
-    PUBSUB_EMULATOR_HOST: pubsub:8085
-    # The emulator does not sign push requests.
-    PUBSUB_PUSH_VERIFY_TOKEN: "false"
-  restart: unless-stopped
 
 services:
   mongodb:
@@ -62,10 +41,41 @@ services:
       '
     restart: "no"
 
+  firebase:
+    build:
+      context: ./docker/firebase
+    image: entregador-firebase-emulator
+    ports:
+      - "9099:9099"
+      - "4000:4000"
+      - "4400:4400"
+      - "4500:4500"
+    restart: unless-stopped
+
+  pubsub-ui:
+    image: ghcr.io/neoscript/pubsub-emulator-ui:latest
+    ports:
+      - "7200:80"
+    depends_on:
+      - pubsub
+    restart: unless-stopped
+
   api:
-    <<: *app
+    build:
+      context: .
     image: entregador-api
     container_name: entregador-api
+    env_file:
+      - path: ${ENV_FILE:-.env.test}
+        required: false
+    environment:
+      # Inside the compose network, localhost does not reach the other containers.
+      MONGODB_URI: mongodb://mongodb:27017
+      GCP_PROJECT_ID: entregador-local
+      PUBSUB_EMULATOR_HOST: pubsub:8085
+      FIREBASE_AUTH_EMULATOR_HOST: firebase:9099
+      # The emulator does not sign push requests.
+      PUBSUB_PUSH_VERIFY_TOKEN: "false"
     ports:
       - "8081:8081"
     depends_on:
@@ -73,76 +83,9 @@ services:
         condition: service_started
       pubsub-init:
         condition: service_completed_successfully
-      kafka-init-topics:
-        condition: service_completed_successfully
-        required: false
-
-  kafka:
-    profiles: [kafka]
-    image: apache/kafka:3.9.0
-    ports:
-      - "9094:9094"
-    environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093,PLAINTEXT_HOST://0.0.0.0:9094
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
-    restart: unless-stopped
-
-  kafka-ui:
-    profiles: [kafka]
-    image: provectuslabs/kafka-ui:latest
-    depends_on:
-      - kafka
-    ports:
-      - "8080:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
-    restart: unless-stopped
-
-  kafka-init-topics:
-    profiles: [kafka]
-    image: apache/kafka:3.9.0
-    depends_on:
-      - kafka
-    entrypoint: ["/bin/sh", "-c"]
-    command: >
-      '
-      until /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list >/dev/null 2>&1; do
-        echo "waiting for kafka";
-        sleep 2;
-      done;
-      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic delivery-internal.commands --partitions 1 --replication-factor 1;
-      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic delivery-subscriber.dlq --partitions 1 --replication-factor 1;
-      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list;
-      '
-    restart: "no"
-
-  worker:
-    <<: *app
-    profiles: [kafka]
-    build:
-      context: .
-      args:
-        APP: worker
-    image: entregador-worker
-    container_name: entregador-worker
-    command: ["./main", "-config=config/subscriber/deployments/delivery_subscriber_internal_commands.json"]
-    depends_on:
-      mongodb:
+      firebase:
         condition: service_started
-      kafka-init-topics:
-        condition: service_completed_successfully
+    restart: unless-stopped
 
 volumes:
   mongo_data:

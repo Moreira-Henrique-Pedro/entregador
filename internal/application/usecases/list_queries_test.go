@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/application/ports/out/mocks"
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain"
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
+	repomocks "github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -15,15 +15,15 @@ import (
 var errRepo = errors.New("mongo down")
 
 func TestListResidentsByApartment(t *testing.T) {
-	residents := []*domain.Resident{{ResidentID: "r1", Apartment: "101"}, domain.NewOtherResident("101")}
+	residents := []*entities.Resident{{ResidentID: "r1", Apartment: "101"}, entities.NewOtherResident("101")}
 
 	tests := []struct {
 		name      string
 		apartment string
 		expect    bool
-		repoOut   []*domain.Resident
+		repoOut   []*entities.Resident
 		repoErr   error
-		want      []*domain.Resident
+		want      []*entities.Resident
 		wantErr   error
 	}{
 		{name: "empty apartment", apartment: "", wantErr: errAny},
@@ -34,7 +34,7 @@ func TestListResidentsByApartment(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := mocks.NewResidentRepository(t)
+			repo := repomocks.NewResidentRepository(t)
 			if tt.expect {
 				repo.EXPECT().FindByApartment(mock.Anything, tt.apartment).Return(tt.repoOut, tt.repoErr).Once()
 			}
@@ -48,15 +48,15 @@ func TestListResidentsByApartment(t *testing.T) {
 }
 
 func TestListResidentsByPhone(t *testing.T) {
-	residents := []*domain.Resident{{ResidentID: "r1", Phone: "11999999999"}, {ResidentID: "r2", Phone: "11999999999"}}
+	residents := []*entities.Resident{{ResidentID: "r1", Phone: "11999999999"}, {ResidentID: "r2", Phone: "11999999999"}}
 
 	tests := []struct {
 		name    string
 		phone   string
 		expect  bool
-		repoOut []*domain.Resident
+		repoOut []*entities.Resident
 		repoErr error
-		want    []*domain.Resident
+		want    []*entities.Resident
 		wantErr error
 	}{
 		{name: "empty phone", phone: "", wantErr: errAny},
@@ -66,7 +66,7 @@ func TestListResidentsByPhone(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := mocks.NewResidentRepository(t)
+			repo := repomocks.NewResidentRepository(t)
 			if tt.expect {
 				repo.EXPECT().FindByPhone(mock.Anything, tt.phone).Return(tt.repoOut, tt.repoErr).Once()
 			}
@@ -79,46 +79,77 @@ func TestListResidentsByPhone(t *testing.T) {
 	}
 }
 
-func TestListDeliveriesByApartment(t *testing.T) {
-	deliveries := []*domain.Delivery{
-		{DeliveryID: "d2", Apartment: "101", Status: domain.DeliveryStatusDeleted},
-		{DeliveryID: "d1", Apartment: "101", Status: domain.DeliveryStatusPending},
-	}
+func TestListDeliveries(t *testing.T) {
+	pending := entities.DeliveryStatusPending
 
 	tests := []struct {
-		name      string
-		apartment string
-		status    *domain.DeliveryStatus
-		expect    bool
-		repoOut   []*domain.Delivery
-		repoErr   error
-		want      []*domain.Delivery
-		wantErr   error
+		name         string
+		filter       entities.DeliveryFilter
+		expectFind   bool
+		repoErr      error
+		expectNames  bool
+		residentsErr error
+		wantNames    []string
+		wantErr      error
 	}{
-		{name: "empty apartment", apartment: "", wantErr: errAny},
-		{name: "invalid status", apartment: "101", status: ptr(domain.DeliveryStatus("lost")), wantErr: errAny},
-		{name: "empty status is invalid", apartment: "101", status: ptr(domain.DeliveryStatus("")), wantErr: errAny},
-		{name: "repository error", apartment: "101", expect: true, repoErr: errRepo, wantErr: errRepo},
-		{name: "nil status means any", apartment: "101", expect: true, repoOut: deliveries, want: deliveries},
-		{name: "pending status", apartment: "101", status: ptr(domain.DeliveryStatusPending), expect: true, repoOut: deliveries[1:], want: deliveries[1:]},
-		{name: "deleted status", apartment: "101", status: ptr(domain.DeliveryStatusDeleted), expect: true, repoOut: deliveries[:1], want: deliveries[:1]},
+		{name: "invalid status", filter: entities.DeliveryFilter{Status: ptr(entities.DeliveryStatus("lost"))}, wantErr: entities.ErrInvalidDelivery},
+		{name: "all deliveries with resident names", expectFind: true, expectNames: true, wantNames: []string{"Ana", "Outro"}},
+		{name: "filtered by apartment and status", filter: entities.DeliveryFilter{Apartment: "101", Status: &pending}, expectFind: true, expectNames: true, wantNames: []string{"Ana", "Outro"}},
+		{name: "delivery repository error", expectFind: true, repoErr: errRepo, wantErr: errRepo},
+		{name: "resident repository error", expectFind: true, expectNames: true, residentsErr: errRepo, wantErr: errRepo},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := mocks.NewDeliveryRepository(t)
-			if tt.expect {
-
-				sameStatus := mock.MatchedBy(func(s *domain.DeliveryStatus) bool { return s == tt.status })
-				repo.EXPECT().FindByApartment(mock.Anything, tt.apartment, sameStatus).Return(tt.repoOut, tt.repoErr).Once()
+			deliveries := []*entities.Delivery{
+				{DeliveryID: "d1", Apartment: "101", ResidentID: "ana"},
+				{DeliveryID: "d2", Apartment: "101", ResidentID: "other-101"},
+			}
+			deliveryRepo := repomocks.NewDeliveryRepository(t)
+			residentRepo := repomocks.NewResidentRepository(t)
+			if tt.expectFind {
+				out := deliveries
+				if tt.repoErr != nil {
+					out = nil
+				}
+				deliveryRepo.EXPECT().Find(mock.Anything, tt.filter).Return(out, tt.repoErr).Once()
+			}
+			if tt.expectNames {
+				residentRepo.EXPECT().FindByResidentIDs(mock.Anything, []string{"ana", "other-101"}).
+					Return([]*entities.Resident{{ResidentID: "ana", Name: "Ana"}, entities.NewOtherResident("101")}, tt.residentsErr).Once()
 			}
 
-			got, err := NewListDeliveriesByApartment(repo).Execute(context.Background(), tt.apartment, tt.status)
+			got, err := NewListDeliveries(deliveryRepo, residentRepo).Execute(context.Background(), tt.filter)
 
-			checkErr(t, err, tt.wantErr)
-			assert.Equal(t, tt.want, got)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				assert.Nil(t, got)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, got, len(tt.wantNames))
+			for i, name := range tt.wantNames {
+				assert.Equal(t, name, got[i].ResidentName)
+			}
 		})
 	}
+}
+
+func TestListApartments(t *testing.T) {
+	repo := repomocks.NewResidentRepository(t)
+	repo.EXPECT().ListApartments(mock.Anything).Return([]string{"63", "101"}, nil).Once()
+
+	got, err := NewListApartments(repo).Execute(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"63", "101"}, got)
+
+	failing := repomocks.NewResidentRepository(t)
+	failing.EXPECT().ListApartments(mock.Anything).Return(nil, errRepo).Once()
+
+	_, err = NewListApartments(failing).Execute(context.Background())
+
+	assert.ErrorIs(t, err, errRepo)
 }
 
 var errAny = errors.New("any error")

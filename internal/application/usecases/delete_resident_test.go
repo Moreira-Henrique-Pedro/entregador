@@ -5,24 +5,23 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain/entities"
+	repomocks "github.com/Moreira-Henrique-Pedro/entregador/internal/domain/interfaces/repositories/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-
-	outmocks "github.com/Moreira-Henrique-Pedro/entregador/internal/application/ports/out/mocks"
-	"github.com/Moreira-Henrique-Pedro/entregador/internal/domain"
 )
 
 func TestDeleteResident(t *testing.T) {
 	failure := errors.New("mongo down")
-	ana := &domain.Resident{ResidentID: "ana", Apartment: "101", Type: domain.ResidentTypePrimary}
-	bia := &domain.Resident{ResidentID: "bia", Apartment: "101", Type: domain.ResidentTypeSecondary}
-	other := domain.NewOtherResident("101")
+	ana := &entities.Resident{ResidentID: "ana", Apartment: "101", Type: entities.ResidentTypePrimary}
+	bia := &entities.Resident{ResidentID: "bia", Apartment: "101", Type: entities.ResidentTypeSecondary}
+	other := entities.NewOtherResident("101")
 
 	tests := []struct {
 		name       string
 		residentID string
 		find       bool
-		current    *domain.Resident
+		current    *entities.Resident
 		findErr    error
 		delete     bool
 		deleteErr  error
@@ -42,9 +41,9 @@ func TestDeleteResident(t *testing.T) {
 			promoteErr: failure,
 			wantErr:    failure,
 		},
-		{name: "resident id is required", wantErr: domain.ErrInvalidResident},
-		{name: "other resident is never deleted", residentID: other.ResidentID, find: true, current: other, wantErr: domain.ErrOtherResidentReadOnly},
-		{name: "unknown resident is not found", residentID: "ghost", find: true, findErr: domain.ErrEntityNotFound, wantErr: domain.ErrEntityNotFound},
+		{name: "resident id is required", wantErr: entities.ErrInvalidResident},
+		{name: "other resident is never deleted", residentID: other.ResidentID, find: true, current: other, wantErr: entities.ErrOtherResidentReadOnly},
+		{name: "unknown resident is not found", residentID: "ghost", find: true, findErr: entities.ErrEntityNotFound, wantErr: entities.ErrEntityNotFound},
 		{name: "find error is returned", residentID: "ana", find: true, findErr: failure, wantErr: failure},
 		{
 			name:       "resident deleted concurrently is not found",
@@ -52,15 +51,15 @@ func TestDeleteResident(t *testing.T) {
 			find:       true,
 			current:    ana,
 			delete:     true,
-			deleteErr:  domain.ErrEntityNotFound,
-			wantErr:    domain.ErrEntityNotFound,
+			deleteErr:  entities.ErrEntityNotFound,
+			wantErr:    entities.ErrEntityNotFound,
 		},
 		{name: "delete error is returned", residentID: "ana", find: true, current: ana, delete: true, deleteErr: failure, wantErr: failure},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			residents := outmocks.NewResidentRepository(t)
+			residents := repomocks.NewResidentRepository(t)
 			if tt.find {
 				residents.EXPECT().FindByResidentID(mock.Anything, tt.residentID).Return(tt.current, tt.findErr).Once()
 			}

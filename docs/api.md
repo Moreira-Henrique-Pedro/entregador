@@ -2,7 +2,72 @@
 
 A API roda em http://localhost:8081 (`HTTP_PORT`; no Cloud Run, a porta vem de `PORT`). Todas as respostas são JSON. Em caso de erro, o body é `{"error": "<motivo>"}`.
 
+## Autenticação
+
+Todas as rotas `/v1` exigem um **ID token do Firebase Auth** no header:
+
+```
+Authorization: Bearer <id_token>
+```
+
+O front obtém o token fazendo login com o SDK do Firebase (e-mail e senha). O token dura 1 hora; o SDK renova sozinho. O papel do usuário vem no token (claim `role`):
+
+| Papel     | Quem      | Pode |
+|-----------|-----------|------|
+| `admin`   | Síndico   | Tudo: moradores, entregas e usuários. |
+| `doorman` | Porteiro  | Registrar, retirar e consultar entregas; consultar moradores. |
+
+| Status | Quando |
+|--------|--------|
+| `401`  | `{"error": "unauthenticated"}`: sem token, token inválido ou expirado. |
+| `403`  | `{"error": "forbidden"}`: o papel do usuário não pode usar a rota. |
+
+`GET /health` e a rota interna do Pub/Sub não usam esse token.
+
+**Desligar localmente:** com `AUTH_ENABLED=false` (padrão do `.env.test`), a API aceita qualquer requisição `/v1`, com ou sem token, para facilitar testar o front. Em produção a API não sobe com a autenticação desligada.
+
+> Se o papel de um usuário mudar, ele só vale depois que o token for renovado (até 1 hora, ou um novo login).
+
+### Login local
+
+Localmente, o Firebase Auth roda no emulador (`firebase` no docker-compose, UI em http://localhost:4000/auth). Crie o primeiro admin e faça login:
+
+```bash
+make create-admin EMAIL=admin@entregador.local NAME="Admin Local" PASSWORD=admin1234
+
+curl -s -X POST 'http://localhost:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key' \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@entregador.local","password":"admin1234","returnSecureToken":true}' | jq -r .idToken
+```
+
+O emulador guarda os usuários só em memória: ao reiniciar o container, crie o admin de novo.
+
+## Usuários
+
+### Cadastrar — `POST /v1/users` (só `admin`)
+
+```bash
+curl -X POST http://localhost:8081/v1/users \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"email":"porteiro@condominio.com","password":"senha-forte","name":"João","role":"doorman"}'
+```
+
+| Campo      | Obrigatório | Descrição |
+|------------|-------------|-----------|
+| `email`    | sim         | E-mail de login. |
+| `password` | sim         | Mínimo de 8 caracteres. Não é guardada pela API: vai direto para o Firebase. |
+| `name`     | sim         | Nome de exibição. |
+| `role`     | sim         | `admin` ou `doorman`. |
+
+| Status | Quando |
+|--------|--------|
+| `201`  | Criado. O body é `{"user_id", "email", "name", "role"}`. |
+| `400`  | Campo ausente ou inválido. |
+| `409`  | Já existe um usuário com esse e-mail. |
+
 ## Moradores
+
+Cadastrar, atualizar e remover moradores é só para `admin`. Consultar vale para `admin` e `doorman`.
 
 O cadastro de moradores é síncrono: a resposta só volta depois que o MongoDB foi atualizado.
 
@@ -48,7 +113,7 @@ curl -X POST http://localhost:8081/v1/residents \
 |-------------|-------------|-----------|
 | `name`      | sim         | Nome do morador. |
 | `apartment` | sim         | Número do apartamento. |
-| `phone`     | não         | Telefone para o WhatsApp. Sem código do país, o `NOTIFIER_DEFAULT_COUNTRY_CODE` (padrão `55`) é adicionado. Morador sem telefone não recebe notificação. |
+| `phone`     | sim         | Telefone para o WhatsApp. Sem código do país, o `NOTIFIER_DEFAULT_COUNTRY_CODE` (padrão `55`) é adicionado. |
 
 - O `resident_id` é gerado pela aplicação.
 - O **primeiro** morador do apartamento vira `resident-primary`, e os seguintes, `resident-secondary`.
@@ -58,6 +123,14 @@ curl -X POST http://localhost:8081/v1/residents \
 |--------|--------|
 | `201`  | Criado. O body é o morador. |
 | `400`  | JSON inválido, campo desconhecido ou campo obrigatório ausente. |
+
+### Listar apartamentos — `GET /v1/apartments`
+
+```bash
+curl http://localhost:8081/v1/apartments   # ["63","101"]
+```
+
+Apartamentos com pelo menos um morador ativo (o "Outro" não conta), sem repetição e em ordem natural (`2`, `63`, `101`, `101A`). É a lista usada para registrar uma entrega.
 
 ### Consultar por apartamento — `GET /v1/residents?apartment=<apartamento>`
 
@@ -110,7 +183,9 @@ A remoção é lógica: o morador continua no MongoDB com `status: deleted` e `d
 
 ## Entregas
 
-O registro e a retirada são **síncronos**: a resposta só volta depois que o MongoDB foi atualizado. A **notificação** por WhatsApp é **assíncrona**: a API publica um comando na fila (Pub/Sub, ou Kafka no modo alternativo) e a mensagem é enviada logo depois, fora do request. Veja [mensageria.md](mensageria.md). Por isso a resposta não espera o Twilio, e uma falha nele não afeta o cadastro.
+Todas as rotas de entregas valem para `admin` e `doorman`.
+
+O registro e a retirada são **síncronos**: a resposta só volta depois que o MongoDB foi atualizado. A **notificação** por WhatsApp é **assíncrona**: a API publica um comando no Pub/Sub e a mensagem é enviada logo depois, fora do request. Veja [mensageria.md](mensageria.md). Por isso a resposta não espera o Twilio, e uma falha nele não afeta o cadastro.
 
 ### Formato da entrega
 
@@ -150,7 +225,7 @@ O que acontece:
    - morador definido: só ele recebe;
    - morador "Outro": só o **morador principal** (`resident-primary`) recebe. Se ele não tiver telefone, ninguém é notificado.
 
-> Se a fila (Pub/Sub ou Kafka) estiver fora do ar, a entrega **é registrada mesmo assim** (`201`), mas a notificação de chegada não é enviada. O erro aparece no log da API (`Failed to schedule arrival notification`). Responder erro aqui faria o front tentar de novo e duplicar a entrega.
+> Se o Pub/Sub estiver fora do ar, a entrega **é registrada mesmo assim** (`201`), mas a notificação de chegada não é enviada. O erro aparece no log da API (`Failed to schedule arrival notification`). Responder erro aqui faria o front tentar de novo e duplicar a entrega.
 
 | Status | Quando |
 |--------|--------|
@@ -166,7 +241,7 @@ curl -X DELETE http://localhost:8081/v1/deliveries/<delivery_id>
 
 Marca a entrega como retirada (`status: deleted`) e agenda a notificação **delivery_picked_up**, com a mesma regra de destinatários do registro.
 
-A chamada é **idempotente**: retirar de novo uma entrega já retirada responde `204`. Se a notificação de retirada ainda não tiver sido enviada, ela é agendada outra vez. Então, se der `500` (por exemplo, com a fila fora do ar), é seguro tentar de novo.
+A chamada é **idempotente**: retirar de novo uma entrega já retirada responde `204`. Se a notificação de retirada ainda não tiver sido enviada, ela é agendada outra vez. Então, se der `500` (por exemplo, com o Pub/Sub fora do ar), é seguro tentar de novo.
 
 | Status | Quando |
 |--------|--------|
@@ -174,19 +249,20 @@ A chamada é **idempotente**: retirar de novo uma entrega já retirada responde 
 | `404`  | Entrega não existe. |
 | `500`  | Falha ao gravar ou ao agendar a notificação. Pode tentar de novo. |
 
-### Consultar por apartamento — `GET /v1/deliveries?apartment=<apartamento>`
+### Consultar — `GET /v1/deliveries`
 
 ```bash
+curl 'http://localhost:8081/v1/deliveries'
 curl 'http://localhost:8081/v1/deliveries?apartment=101&status=pending'
 ```
 
-`status` é opcional: `pending` ou `deleted` (retirada).
+Sem filtros, lista todas as entregas, das mais novas para as mais antigas. Filtros opcionais: `apartment` e `status` (`pending` ou `deleted`). Cada entrega traz também o `resident_name` (para o morador "Outro", vem `Outro`).
 
 | Status | Quando |
 |--------|--------|
 | `200`  | Lista de entregas. |
-| `400`  | Sem `apartment`, ou `status` inválido. |
+| `400`  | `status` inválido. |
 
 ## Rota interna
 
-`POST /internal/pubsub/notifications` recebe o push da subscription do Pub/Sub (só existe com `MESSAGING_PROVIDER=pubsub`). **Não é para o front**: ela exige o token OIDC assinado pelo Google. Veja [mensageria.md](mensageria.md).
+`POST /internal/pubsub/notifications` recebe o push da subscription do Pub/Sub. **Não é para o front**: ela exige o token OIDC assinado pelo Google. Veja [mensageria.md](mensageria.md).
