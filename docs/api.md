@@ -40,7 +40,13 @@ curl -s -X POST 'http://localhost:9099/identitytoolkit.googleapis.com/v1/account
   -d '{"email":"admin@entregador.local","password":"admin1234","returnSecureToken":true}' | jq -r .idToken
 ```
 
-O emulador guarda os usuários só em memória: ao reiniciar o container, crie o admin de novo.
+Para testar o front como porteiro (só entregas e consulta de moradores):
+
+```bash
+make create-doorman EMAIL=porteiro@entregador.local NAME="Porteiro Local" PASSWORD=porteiro123
+```
+
+O emulador guarda os usuários só em memória: ao reiniciar o container, crie os usuários de novo. Ele não envia e-mails: o link de "esqueceu a senha" aparece na UI do emulador (http://localhost:4000/auth) e no log do container `firebase`.
 
 ## Usuários
 

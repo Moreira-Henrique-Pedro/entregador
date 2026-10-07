@@ -13,9 +13,10 @@ import (
 )
 
 func main() {
-	email := flag.String("email", "", "admin email")
-	name := flag.String("name", "", "admin name")
-	password := flag.String("password", "", "admin password (at least 8 characters)")
+	email := flag.String("email", "", "user email")
+	name := flag.String("name", "", "user name")
+	password := flag.String("password", "", "user password (at least 8 characters)")
+	role := flag.String("role", string(entities.RoleAdmin), "user role: admin or doorman")
 	flag.Parse()
 
 	envs, err := config.ReadEnvs()
@@ -35,11 +36,11 @@ func main() {
 		logger.Fatal("Failed to create identity provider", "error", err.Error())
 	}
 
-	admin := &entities.User{Email: *email, Name: *name, Role: entities.RoleAdmin}
-	created, err := usecases.NewCreateUser(identityProvider).Execute(ctx, admin, *password)
+	user := &entities.User{Email: *email, Name: *name, Role: entities.Role(*role)}
+	created, err := usecases.NewCreateUser(identityProvider).Execute(ctx, user, *password)
 	if err != nil {
-		logger.Fatal("Failed to create admin", "error", err.Error())
+		logger.Fatal("Failed to create user", "error", err.Error())
 	}
 
-	logger.Info("Admin created", "user_id", created.ID, "email", created.Email)
+	logger.Info("User created", "user_id", created.ID, "email", created.Email, "role", string(created.Role))
 }
