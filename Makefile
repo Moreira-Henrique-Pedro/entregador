@@ -1,4 +1,4 @@
-.PHONY: up app-up infra api create-admin docker-build test coverage mocks down linter
+.PHONY: up app-up infra api create-admin create-doorman docker-build test coverage mocks down linter
 
 ## Arquivo de variáveis usado localmente; para usar outro: make up ENV_FILE=.env
 ENV_FILE ?= .env.test
@@ -24,6 +24,10 @@ api:
 ## Cria um usuário admin no Firebase (local: no emulador): make create-admin EMAIL=... NAME=... PASSWORD=...
 create-admin:
 	go run ./cmd/create-admin -email="$(EMAIL)" -name="$(NAME)" -password="$(PASSWORD)"
+
+## Cria um porteiro no Firebase (local: no emulador): make create-doorman EMAIL=... NAME=... PASSWORD=...
+create-doorman:
+	go run ./cmd/create-admin -role=doorman -email="$(EMAIL)" -name="$(NAME)" -password="$(PASSWORD)"
 
 ## Gera a imagem Docker da API
 docker-build:
